@@ -84,9 +84,10 @@ Concretely, this means:
 ```
 
 Note for agents: `actions/`, `docs/`, `scripts/`, `.github/workflows/`,
-`omnibenchmark.yaml`, and the root `pixi.toml` have content; `src/common/{python,r}/`
-and `validators/` are still **empty placeholders** whose *intended* purpose is
-described below. Do not assume files exist — check first.
+`omnibenchmark.yaml`, and the root `pixi.toml` have content; `validators/` holds
+a single copied example so far (see below); `src/common/{python,r}/` is still an
+**empty placeholder** whose *intended* purpose is described below. Do not assume
+files exist — check first.
 
 ### `src/common/{python,r}/`
 Shared, language-split utilities that get copied into a module: logging setup,
@@ -117,12 +118,17 @@ Validators live in **two homes, split by role**:
   `validators/five-pca/pcas.tsv/validate.R`).
 
 Both import the shared helpers under `src/common/` (read one file path, load the
-format, assertion utilities), so the two feel like one contract. **Don't
-duplicate the same `STAGE/OUTPUT` validator across both repos:** keep this repo's
-validators generic/inheritable, leave stage-specific ones to the plan, and
-*pick* the plan's validators (`pixi run fixtures`, see *`omnibenchmark.yaml` —
-module config + plan link*) to check the shared helpers keep running against the
-real contract.
+format, assertion utilities), so the two feel like one contract. As a rule,
+**don't duplicate the same `STAGE/OUTPUT` validator across both repos:** keep
+this repo's validators generic/inheritable, leave stage-specific ones to the
+plan, and *pick* the plan's validators (`pixi run fixtures`, see
+*`omnibenchmark.yaml` — module config + plan link*) to check the shared helpers
+keep running against the real contract.
+
+**Temporary exception:** `validators/five-pca/pcas.tsv/validate.R` is a copy
+from the plan, kept here as a concrete example to build the shared scaffolding
+against. It is the *one* deliberate duplication, flagged with a `TODO` in the
+file — remove it from this repo once validators get a proper home.
 
 ### `actions/`
 A **catalog of reusable GitHub Actions** for modules. Each subdirectory is one
