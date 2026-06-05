@@ -1,0 +1,33 @@
+name: Validate module
+description: "Run `ob validate module` against omnibenchmark's main branch (self-contained pixi toolchain; the module need not be pixi-based)."
+
+inputs:
+  path:
+    description: Path to the module to validate.
+    required: false
+    default: "."
+  strict:
+    description: Treat warnings as errors and fail on any validation issue.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up omnibenchmark toolchain (pixi)
+      uses: prefix-dev/setup-pixi@v0.8.10
+      with:
+        # The action ships its own manifest; this never touches the module's repo.
+        manifest-path: ${{ github.action_path }}/pixi.toml
+        # omnibenchmark is pinned to a git branch, so the lockfile drifts; don't fail on it.
+        frozen: false
+        locked: false
+
+    - name: Validate module
+      shell: bash
+      run: |
+        args=(validate module "${{ inputs.path }}")
+        if [ "${{ inputs.strict }}" = "true" ]; then
+          args+=(--strict)
+        fi
+        pixi run --manifest-path "${{ github.action_path }}/pixi.toml" ob "${args[@]}"

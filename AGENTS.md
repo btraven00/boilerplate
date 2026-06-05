@@ -80,11 +80,19 @@ logic unless explicitly asked, and focus effort on `src/common/` and the
 developer-task scaffolding instead.
 
 ### `actions/`
-Lightweight, reusable automation entry points (CI steps, task runners, etc.).
-The goal is a thin runner — a `Makefile` / `pixi.toml` task that invokes the
-local `src/common` CLI — rather than a heavy central engine. Tasks should
-trigger local logic, not a remote service. (A `validate` task will join these
-once validators exist, but that's deferred.)
+A **catalog of reusable GitHub Actions** for modules. Each subdirectory is one
+composite action (`action.yml`) that a module references with `uses:` — its
+logic is *not* copied in. Unlike `src/common/` (copied in, author-owned), CI is
+shared infrastructure, so the "fix once, every module gets it" model fits, and
+the heavy toolchain (pixi + omnibenchmark) lives *inside the action* so modules
+stay lean and need not be pixi-based. `actions/install.sh` drops an action's
+thin caller workflow into a module's `.github/workflows/` (plain POSIX sh, no
+pixi assumption, non-destructive). See `actions/README.md`.
+
+Note: these are actions, not workflows, so **nothing in `actions/` runs in this
+repo** — an `action.yml` only executes when another repo's workflow `uses:` it.
+This repo has no `.github/workflows/` of its own. The first action is
+`validate-module` (`ob validate module` against omnibenchmark's `main`).
 
 ### `docs/`
 Documentation aimed at module authors: how to generate a module, how to declare

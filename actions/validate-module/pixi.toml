@@ -1,0 +1,19 @@
+# Toolchain for the validate-module composite action.
+#
+# This manifest is private to the action: setup-pixi loads it via its
+# manifest-path, so the omnibenchmark dependency lives HERE, inside the action,
+# and is never imposed on the module being validated. Modules do not need pixi.
+
+[workspace]
+name = "validate-module-action"
+version = "0.1.0"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = ">=3.12,<3.14"
+pip = "*"
+
+# omnibenchmark from its main branch — the `ob` CLI provides `ob validate module`.
+[pypi-dependencies]
+omnibenchmark = { git = "https://github.com/omnibenchmark/omnibenchmark.git", branch = "main" }
