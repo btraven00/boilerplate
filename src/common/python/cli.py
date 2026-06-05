@@ -23,9 +23,10 @@ invocation line); unknown flags are rejected; ``dest`` defaults to the flag with
 dots/dashes turned into ``_`` (``--pcas.tsv`` -> ``pcas_tsv``) unless the schema
 overrides it. Types: ``path | string | integer | number``.
 
-Usage in an entrypoint::
+Usage in an entrypoint (in a rendered module the shared code is the ``common``
+package)::
 
-    from cli import parse_args
+    from common.cli import parse_args
     args = parse_args("embedding")        # or parse_args() if the module has one schema
     # args.output_dir, args.name, args.pcas, args.clusters_truth
 """
@@ -37,8 +38,17 @@ from pathlib import Path
 
 __version__ = "0.1.0"  # x-release-version — stamped from src/common/VERSION by `pixi run version`
 
-_COMMON_DIR = Path(__file__).resolve().parent.parent       # src/common
-_SCHEMA_DIR = _COMMON_DIR / "schema"
+def _find_schema_dir() -> Path:
+    # Works under both layouts: rendered `common/cli.py` (schema is a sibling)
+    # and the template's `common/python/cli.py` (schema is one level up).
+    here = Path(__file__).resolve().parent
+    for base in (here, here.parent):
+        if (base / "schema").is_dir():
+            return base / "schema"
+    return here / "schema"
+
+
+_SCHEMA_DIR = _find_schema_dir()
 _TYPES = {"path": Path, "string": str, "integer": int, "number": float}
 
 

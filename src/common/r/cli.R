@@ -18,8 +18,8 @@
 # Conventions: every arg is required; unknown flags rejected; dest defaults to
 # the flag with dots/dashes -> "_" unless overridden. Types: path|string|integer|number.
 #
-# Usage in an entrypoint:
-#   source(".../src/common/r/cli.R")
+# Usage in an entrypoint (in a rendered module the shared code is `common/`):
+#   source("common/cli.R")              # R has no import namespace; we source()
 #   args <- parse_args("embedding")     # or parse_args() if the module has one schema
 #   # args$output_dir, args$name, args$pcas, args$clusters_truth
 
@@ -41,8 +41,17 @@ suppressPackageStartupMessages(library(jsonlite))
 }
 COMMON_VERSION <- "0.1.0"  # x-release-version — stamped from src/common/VERSION by `pixi run version`
 
-.COMMON_DIR <- dirname(.this_dir())             # src/common
-.SCHEMA_DIR <- file.path(.COMMON_DIR, "schema")
+# Works under both layouts: rendered `common/cli.R` (schema is a sibling) and the
+# template's `common/r/cli.R` (schema is one level up).
+.find_schema_dir <- function() {
+  here <- .this_dir()
+  for (base in c(here, dirname(here))) {
+    cand <- file.path(base, "schema")
+    if (dir.exists(cand)) return(cand)
+  }
+  file.path(here, "schema")
+}
+.SCHEMA_DIR <- .find_schema_dir()
 
 # Version of the src/common shared code, so a module can report which copy of the
 # boilerplate scaffolding it carries. Stamped from src/common/VERSION (single

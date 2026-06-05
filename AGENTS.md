@@ -106,6 +106,21 @@ the same parser from it. A module "satisfies" an interface by carrying its
 schema and parsing against it. **Add new shared utilities under the correct
 language directory**, with matching surfaces.
 
+**Import convention.** In a *rendered* module the shared code is the `common`
+package (Copier drops the language segment, leaving the chosen language's files
+plus `schema/`), so entrypoints import it as:
+
+```python
+from common.cli import parse_args     # Python
+```
+```r
+source("common/cli.R")                # R (no import namespace; we source())
+```
+
+The template keeps the `src/common/{python,r}/` split for maintenance; the engine
+locates `schema/` relative to itself, so the same `cli.py`/`cli.R` works whether
+it sits at `common/cli.*` (rendered) or `common/<lang>/cli.*` (template).
+
 `src/common/VERSION` versions the shared code as a whole (Python and R move
 together), so a module can report which copy of the scaffolding it carries.
 VERSION is the single source of truth; `pixi run version` **stamps** it into
