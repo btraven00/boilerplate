@@ -15,7 +15,7 @@ entrypoints:
   default: run.sh
 template-for:
   - name: split-stages
-    url: https://example.com/plan
+    repo: https://example.com/plan
     plan: benchmark.yaml
 implements:
   - {impl}

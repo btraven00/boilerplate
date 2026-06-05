@@ -6,12 +6,12 @@ entrypoints:
   default: run.sh
 
 # Benchmarks this boilerplate scaffolds for. Each entry is one benchmark: a short
-# LABEL (`name`, used by `implements`), the repo `url`, and `plan` — the benchmark
+# LABEL (`name`, used by `implements`), the `repo`, and `plan` — the benchmark
 # definition file within that repo (a repo may hold more than one). `ob` ignores
 # these keys.
 template-for:
   - name: split-stages
-    url: https://github.com/omni-scrna/split-stages-plan
+    repo: https://github.com/omni-scrna/split-stages-plan
     plan: benchmark_conda.yaml
 
 # Interfaces this module implements, as <benchmark-label>/<interface>@<version>.

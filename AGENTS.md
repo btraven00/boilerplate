@@ -174,7 +174,7 @@ entrypoints:
   default: run.sh        # placeholder — real entrypoints (validators) come later
 template-for:
   - name: split-stages   # short LABEL for the benchmark
-    url: https://github.com/omni-scrna/split-stages-plan
+    repo: https://github.com/omni-scrna/split-stages-plan
     plan: benchmark_conda.yaml   # the benchmark definition within that repo
 implements:
   - split-stages/embedding@0.1.0   # <benchmark-label>/<interface>@<version>
@@ -185,7 +185,7 @@ implements:
   pass against it. The validator only requires an `entrypoints.default` key, not
   a working entrypoint yet — hence the `run.sh` placeholder.
 - **`template-for`** lists the benchmark(s) this scaffolds for. Each entry is one
-  benchmark: a short `name` LABEL, the repo `url`, and `plan` (the benchmark
+  benchmark: a short `name` LABEL, the `repo`, and `plan` (the benchmark
   definition file within that repo — a repo may hold several). `ob` ignores it.
 - **`implements`** declares the interface(s) a module satisfies, as
   `<benchmark-label>/<interface>@<version>`. The interface is defined as data in
