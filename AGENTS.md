@@ -107,10 +107,14 @@ schema and parsing against it. **Add new shared utilities under the correct
 language directory**, with matching surfaces.
 
 `src/common/VERSION` versions the shared code as a whole (Python and R move
-together). It travels with the copied-in code, so a module can report which copy
-it carries — `common_version()` in both `cli.py` and `cli.R` reads it. **Bump it
-when changing anything under `src/common/`** (this is distinct from an
-*interface* version, which lives per-schema in `src/common/schema/`).
+together), so a module can report which copy of the scaffolding it carries.
+VERSION is the single source of truth; `pixi run version` **stamps** it into
+literals — `__version__` in `cli.py`, `COMMON_VERSION` in `cli.R` (lines tagged
+`x-release-version`) — which `common_version()` returns. Stamping (rather than
+reading the file at runtime) means the vendored copy carries the version with no
+file dependency. **Bump VERSION on any change under `src/common/`, then run
+`pixi run version`**; `version-check` gates drift in CI. This is distinct from an
+*interface* version, which lives per-schema in `src/common/schema/`.
 
 ### `validators/`
 I/O contract checks, routed `validators/<STAGE_NAME>/<OUTPUT_NAME>/validate.<ext>`
@@ -169,19 +173,23 @@ This repo carries its own `omnibenchmark.yaml`, which does double duty:
 entrypoints:
   default: run.sh        # placeholder — real entrypoints (validators) come later
 template-for:
-  - https://github.com/omni-scrna/split-stages-plan
+  - name: split-stages   # short LABEL for the benchmark
+    url: https://github.com/omni-scrna/split-stages-plan
+implements:
+  - split-stages/embedding@0.1.0   # <benchmark-label>/<interface>@<version>
 ```
 
 - **`entrypoints`** make the repo a valid omnibenchmark module, so it
   **self-validates**: `ob validate module .` (and the `validate-module` action)
-  pass against it. CI dogfoods the action on this repo (see *Continuous
-  integration*). The validator only requires an `entrypoints.default` key, not a
-  working entrypoint yet — hence the `run.sh` placeholder.
-- **`template-for`** declares which plan(s) this boilerplate scaffolds — the
-  source of truth for "which plan do we belong to" (`ob` ignores the key). It is
-  the anchor for the *interface* idea: a module satisfies a benchmark's
-  versioned CLI contract, defined as data in `src/common/schema/` (see
-  `src/common/`).
+  pass against it. The validator only requires an `entrypoints.default` key, not
+  a working entrypoint yet — hence the `run.sh` placeholder.
+- **`template-for`** lists the benchmark(s) this scaffolds for, each with a short
+  `name` LABEL (`ob` ignores the key).
+- **`implements`** declares the interface(s) a module satisfies, as
+  `<benchmark-label>/<interface>@<version>`. The interface is defined as data in
+  `src/common/schema/<interface>.json`; tooling can check the carried schema
+  matches the declared label/version. (Here it's illustrative — this repo is a
+  template that also self-validates.)
 
 ### `scripts/` and `pixi.toml`
 Maintenance for working *on* the template itself — **never copied into a
@@ -190,6 +198,8 @@ dev-task manifest, deliberately separate from `actions/*/pixi.toml` (which are
 private action toolchains). Its tasks:
 
 - `pixi run docs` / `docs-check` — re-embed doc snippets / fail on drift.
+- `pixi run version` / `version-check` — stamp `src/common/VERSION` into the
+  language sources / fail on drift.
 - `pixi run test` — Python + R tests for `src/common` (under `tests/`).
 - `pixi run lint` / `typecheck` — `ruff` and `mypy` over the Python side.
 - `pixi run check` — all of the above; this is what CI runs and gates on.

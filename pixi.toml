@@ -26,6 +26,10 @@ mypy = "*"
 docs = "python scripts/embed_snippets.py"
 docs-check = "python scripts/embed_snippets.py --check"
 
+# Stamp src/common/VERSION into the language sources (single source of truth).
+version = "python scripts/stamp_version.py"
+version-check = "python scripts/stamp_version.py --check"
+
 # Tests for src/common (Python + R).
 test = { cmd = "python -m unittest discover -s tests -p 'test_*.py' && Rscript tests/test_cli.R" }
 
@@ -34,4 +38,4 @@ lint = "ruff check src/common/python tests scripts"
 typecheck = "mypy src/common/python"
 
 # What CI runs and what merges are gated on. Keep this green.
-check = { depends-on = ["docs-check", "lint", "typecheck", "test"] }
+check = { depends-on = ["docs-check", "version-check", "lint", "typecheck", "test"] }

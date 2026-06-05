@@ -39,15 +39,15 @@ suppressPackageStartupMessages(library(jsonlite))
   if (length(f)) return(dirname(normalizePath(f)))
   getwd()
 }
+COMMON_VERSION <- "0.1.0"  # x-release-version — stamped from src/common/VERSION by `pixi run version`
+
 .COMMON_DIR <- dirname(.this_dir())             # src/common
 .SCHEMA_DIR <- file.path(.COMMON_DIR, "schema")
 
-# Version of the src/common shared code (VERSION), so a module can report which
-# copy of the boilerplate scaffolding it carries. Bump on changes to src/common;
-# it travels with the copied-in code.
-common_version <- function() {
-  trimws(readLines(file.path(.COMMON_DIR, "VERSION"), warn = FALSE)[1])
-}
+# Version of the src/common shared code, so a module can report which copy of the
+# boilerplate scaffolding it carries. Stamped from src/common/VERSION (single
+# source of truth) — bump VERSION and run `pixi run version`.
+common_version <- function() COMMON_VERSION
 
 .r_types <- c(path = "character", string = "character",
               integer = "integer", number = "double")

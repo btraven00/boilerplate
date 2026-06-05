@@ -35,16 +35,18 @@ import argparse
 import json
 from pathlib import Path
 
+__version__ = "0.1.0"  # x-release-version — stamped from src/common/VERSION by `pixi run version`
+
 _COMMON_DIR = Path(__file__).resolve().parent.parent       # src/common
 _SCHEMA_DIR = _COMMON_DIR / "schema"
 _TYPES = {"path": Path, "string": str, "integer": int, "number": float}
 
 
 def common_version() -> str:
-    """Version of the src/common shared code (VERSION), so a module can report
-    which copy of the boilerplate scaffolding it carries. Bump on changes to
-    src/common; it travels with the copied-in code."""
-    return (_COMMON_DIR / "VERSION").read_text().strip()
+    """Version of the src/common shared code, so a module can report which copy
+    of the boilerplate scaffolding it carries. Stamped from src/common/VERSION
+    (single source of truth) — bump VERSION and run `pixi run version`."""
+    return __version__
 
 
 def _default_dest(flag: str) -> str:

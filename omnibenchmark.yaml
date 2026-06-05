@@ -5,7 +5,15 @@
 entrypoints:
   default: run.sh
 
-# Which benchmark plan(s) this boilerplate is a template for (discovery + future
-# fixture sourcing). Not interpreted by `ob` today.
+# Benchmarks this boilerplate scaffolds for. Each has a short LABEL (`name`) used
+# to reference its interfaces from `implements`. `ob` ignores these keys.
 template-for:
-  - https://github.com/omni-scrna/split-stages-plan
+  - name: split-stages
+    url: https://github.com/omni-scrna/split-stages-plan
+
+# Interfaces this module implements, as <benchmark-label>/<interface>@<version>.
+# The interface is defined as data in src/common/schema/<interface>.json.
+# (Illustrative here: this repo is a template that also self-validates; the
+# example schema is src/common/schema/embedding.json.)
+implements:
+  - split-stages/embedding@0.1.0
