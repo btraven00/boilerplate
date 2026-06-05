@@ -23,20 +23,23 @@ This is the **boilerplate** for modules of the
 [omni-scrna](https://github.com/omni-scrna/) omnibenchmark. A module is a
 self-contained repository that implements one or more *stages* of the benchmark
 (e.g. a method, a metric, a data loader). This repo is the canonical source of
-the shared scaffolding those modules copy in: common utilities, I/O contracts,
-validators, and developer tasks.
+the shared scaffolding those modules copy in (common utilities, I/O contracts,
+validators), plus the CI actions they reference and the developer tasks for
+working on the template itself.
 
-It is distributed with [Copier](https://copier.readthedocs.io/), **not** git
-submodules. Module authors generate their repo from this template and later run
-`copier update` to pull upstream improvements. Copier's three-way merge lets an
+Common code is, in principle, supposed to be distributed with
+[Copier](https://copier.readthedocs.io/), **not** git
+submodules (but we're still trying out the workflow and we might change our
+minds later). Module authors generate their repo from this template and later
+run `copier update` to pull upstream improvements. Copier's three-way merge lets an
 author tweak the copied code locally and still receive updates without losing
 their edits.
 
 ## Design philosophy — read this before changing anything
 
-The ecosystem is **bazaar-style, not cathedral-style**. Conventions are
-*opt-in* and *convention-driven*, never enforced by a heavy runtime dependency.
-The guiding rule:
+The ecosystem for a given benchmark is supposed to be **bazaar-style, not
+cathedral-style**. Conventions are *opt-in* and *convention-driven*, never
+enforced by a heavy runtime dependency.  The guiding rule:
 
 > Give module authors a paved path that makes their lives easier, and they might 
 > use it. Force a heavy dependency on them and it will not fit their needs.
@@ -54,7 +57,7 @@ Concretely, this means:
   not write code that assumes the template's files are pristine; `copier update`
   merges, it does not overwrite.
 - **This is a prototype that earns its way into the core.** Pieces of
-  `src/common/` that prove universally useful across the benchmark are candidates
+  `src/common/` that prove universally useful across the benchmark, and generic enough in terms of dependencies, are candidates
   to graduate upstream (into `obkit` or the core engine). Benchmark-specific I/O
   contracts stay here. Don't prematurely promote things.
 
@@ -69,7 +72,7 @@ Concretely, this means:
 ├── CITATION.cff         # required for `ob validate module`
 ├── LICENSE
 ├── pixi.toml            # dev tasks for working ON the template (not copied into modules)
-├── .github/workflows/   # this repo's own CI (tests docs + validators, not the catalog)
+├── .github/workflows/   # this repo's own CI (docs sync + self-validation, not the catalog)
 ├── scripts/             # repo maintenance helpers (e.g. doc-snippet embedding)
 ├── actions/             # reusable CI / automation entry points
 ├── docs/                # module-author documentation
@@ -218,10 +221,12 @@ focused on what this repo ships.
 ## Working in this repo
 
 - This is a **template**, so files here may contain Jinja (`{{ ... }}`,
-  `{% ... %}`) and `.jinja` suffixes. Edit the template source, not a rendered
-  output.
-- Changes here propagate to every module via `copier update`. Treat backward
+  `{% ... %}`) and `.jinja` suffixes. This might not be the case later on if we
+decide to fully embrace git submodules. Edit the template source, not a
+rendered output.
+ - Changes here propagate to every module via `copier update`. Treat backward
   compatibility of conventions (paths, CLI names, contract shapes) as a
   first-class concern — a rename can break every downstream module's merge.
 - When in doubt, favor the smallest convention that solves the problem over a
   new dependency or abstraction.
+- A convention we can recommend as good practices is to reserve some paths (like `src/common`) for code being propagated from templates. If module authors avoid touching src/common, we can always overwrite that sub-path.

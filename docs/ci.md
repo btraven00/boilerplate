@@ -38,8 +38,10 @@ jobs:
 <!-- /embed -->
 
 That's the whole file. Because the work lives in the reusable composite action
-referenced by `uses:`, upstream fixes reach your module automatically — you
-never re-install.
+referenced by `uses: …@main`, fixes to the **action** reach your module
+automatically — you never re-install. The few lines of the caller workflow
+itself are yours to maintain, though: the `actions/checkout` version, for
+instance, is pinned in your copy and only changes when you bump it.
 
 ### B. Install the workflow from the catalog
 
