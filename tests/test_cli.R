@@ -39,4 +39,11 @@ writeLines(
 b <- parse_args("t", argv = c("--i", "3", "--f", "1.5"), schema_dir = d)
 stopifnot(is.integer(b$i), b$i == 3L, is.numeric(b$f), b$f == 1.5)
 
+# version accessor reads src/common/VERSION
+v <- common_version()
+stopifnot(
+  v == trimws(readLines("src/common/VERSION", warn = FALSE)[1]),
+  grepl("^[0-9]+\\.[0-9]+\\.[0-9]+", v)
+)
+
 cat("R cli tests: PASS\n")

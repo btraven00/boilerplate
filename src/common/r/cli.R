@@ -39,7 +39,15 @@ suppressPackageStartupMessages(library(jsonlite))
   if (length(f)) return(dirname(normalizePath(f)))
   getwd()
 }
-.SCHEMA_DIR <- file.path(dirname(.this_dir()), "schema")  # src/common/r/../schema
+.COMMON_DIR <- dirname(.this_dir())             # src/common
+.SCHEMA_DIR <- file.path(.COMMON_DIR, "schema")
+
+# Version of the src/common shared code (VERSION), so a module can report which
+# copy of the boilerplate scaffolding it carries. Bump on changes to src/common;
+# it travels with the copied-in code.
+common_version <- function() {
+  trimws(readLines(file.path(.COMMON_DIR, "VERSION"), warn = FALSE)[1])
+}
 
 .r_types <- c(path = "character", string = "character",
               integer = "integer", number = "double")

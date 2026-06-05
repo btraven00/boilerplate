@@ -35,8 +35,16 @@ import argparse
 import json
 from pathlib import Path
 
-_SCHEMA_DIR = Path(__file__).resolve().parent.parent / "schema"
+_COMMON_DIR = Path(__file__).resolve().parent.parent       # src/common
+_SCHEMA_DIR = _COMMON_DIR / "schema"
 _TYPES = {"path": Path, "string": str, "integer": int, "number": float}
+
+
+def common_version() -> str:
+    """Version of the src/common shared code (VERSION), so a module can report
+    which copy of the boilerplate scaffolding it carries. Bump on changes to
+    src/common; it travels with the copied-in code."""
+    return (_COMMON_DIR / "VERSION").read_text().strip()
 
 
 def _default_dest(flag: str) -> str:

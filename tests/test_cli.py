@@ -55,6 +55,11 @@ class TestCli(unittest.TestCase):
         with self.assertRaises(SystemExit):
             cli.load_interface("does-not-exist")
 
+    def test_common_version(self):
+        v = cli.common_version()
+        self.assertEqual(v, (ROOT / "src" / "common" / "VERSION").read_text().strip())
+        self.assertRegex(v, r"^\d+\.\d+\.\d+")
+
 
 if __name__ == "__main__":
     unittest.main()

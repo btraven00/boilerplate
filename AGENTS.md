@@ -79,6 +79,7 @@ Concretely, this means:
 ├── docs/                # module-author documentation
 ├── src/
 │   └── common/          # shared code copied into every module
+│       ├── VERSION      # version of the shared code; travels with the copy
 │       ├── python/      # rendered for Python modules
 │       ├── r/           # rendered for R modules
 │       └── schema/      # JSON interface specs (one CLI contract, two languages)
@@ -104,6 +105,12 @@ versioned CLI contract owned by a benchmark — is defined as data in
 the same parser from it. A module "satisfies" an interface by carrying its
 schema and parsing against it. **Add new shared utilities under the correct
 language directory**, with matching surfaces.
+
+`src/common/VERSION` versions the shared code as a whole (Python and R move
+together). It travels with the copied-in code, so a module can report which copy
+it carries — `common_version()` in both `cli.py` and `cli.R` reads it. **Bump it
+when changing anything under `src/common/`** (this is distinct from an
+*interface* version, which lives per-schema in `src/common/schema/`).
 
 ### `validators/`
 I/O contract checks, routed `validators/<STAGE_NAME>/<OUTPUT_NAME>/validate.<ext>`
