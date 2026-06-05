@@ -1,0 +1,11 @@
+# This repo doubles as an omnibenchmark module so `ob validate module` (and the
+# validate-module action) can run against it — the boilerplate's own CI dogfoods
+# the action on itself. Real entrypoints (e.g. validators) come later; for now a
+# placeholder satisfies the required `default` key.
+entrypoints:
+  default: run.sh
+
+# Which benchmark plan(s) this boilerplate is a template for (discovery + future
+# fixture sourcing). Not interpreted by `ob` today.
+template-for:
+  - https://github.com/omni-scrna/split-stages-plan

@@ -2,6 +2,21 @@
 
 Guidance for AI agents (and humans) working in this repository.
 
+## Who this is for — read first
+
+There are **two audiences**, and most of this file addresses the first:
+
+1. **Maintainers of the template** — agents/humans editing *this* repo. The
+   rest of this document is for you.
+2. **Consumers** — an agent (Claude, etc.) working inside a *module* repo,
+   pointed here to wire that module up. **If that's you, you are not meant to
+   edit this repo.** Go to [`docs/`](docs/) for task-oriented guides, starting
+   with [`docs/ci.md`](docs/ci.md) (add validation CI). Prefer the no-checkout
+   path: reference an action by `uses: omni-scrna/boilerplate/actions/<name>@main`
+   in the module's own workflow. Later, language utilities to copy in will live
+   under `src/common/`. Don't copy `actions/`, `scripts/`, or this file into a
+   module — they belong to the template.
+
 ## What this repository is
 
 This is the **boilerplate** for modules of the
@@ -49,6 +64,13 @@ Concretely, this means:
 .
 ├── AGENTS.md            # this file
 ├── README.md
+├── omnibenchmark.yaml   # makes this repo double as a (self-validating) module; also template-for:
+├── run.sh               # placeholder default entrypoint (so it validates as a module)
+├── CITATION.cff         # required for `ob validate module`
+├── LICENSE
+├── pixi.toml            # dev tasks for working ON the template (not copied into modules)
+├── .github/workflows/   # this repo's own CI (tests docs + validators, not the catalog)
+├── scripts/             # repo maintenance helpers (e.g. doc-snippet embedding)
 ├── actions/             # reusable CI / automation entry points
 ├── docs/                # module-author documentation
 ├── src/
@@ -58,9 +80,10 @@ Concretely, this means:
 └── validators/          # I/O contract checks, routed by stage/output
 ```
 
-Note for agents: as of this writing the subdirectories are **empty
-placeholders**. The layout below describes their *intended* purpose. Do not
-assume files exist — check first.
+Note for agents: `actions/`, `docs/`, `scripts/`, `.github/workflows/`,
+`omnibenchmark.yaml`, and the root `pixi.toml` have content; `src/common/{python,r}/`
+and `validators/` are still **empty placeholders** whose *intended* purpose is
+described below. Do not assume files exist — check first.
 
 ### `src/common/{python,r}/`
 Shared, language-split utilities that get copied into a module: logging setup,
@@ -72,12 +95,31 @@ across languages where it makes sense, so the two implementations feel like one
 contract.
 
 ### `validators/`
-**Not a current priority — deferred to later.** This directory will eventually
-hold the I/O contract checks, routed by a `validators/<STAGE_NAME>/<OUTPUT_NAME>`
-convention (a self-documenting layout so tooling can discover a stage's contract
-by path). For now treat it as a reserved placeholder: don't build out validator
-logic unless explicitly asked, and focus effort on `src/common/` and the
-developer-task scaffolding instead.
+I/O contract checks, routed `validators/<STAGE_NAME>/<OUTPUT_NAME>/validate.<ext>`
+— a self-documenting layout so tooling can discover a stage's contract by path.
+Each validator receives a single output file path and uses as few dependencies
+as possible. The routing is shared with the plan, so a validator written in one
+home runs unchanged in the other.
+
+Validators live in **two homes, split by role**:
+
+- **This repo's `validators/`** ships *reusable, inheritable* validators that a
+  module copies in (via Copier, like `src/common/`) to test its **own** outputs
+  *before* the benchmark runs — generic checks (a TSV is well-formed, an `.h5ad`
+  opens, expected shape/columns) and starter templates an author can specialize.
+  Author-owned and editable once copied.
+- **The plan** owns the *authoritative, stage-specific* validator for each
+  `STAGE/OUTPUT`, run at benchmark time (the upstream prototype of this
+  convention — see [split-stages-plan](https://github.com/omni-scrna/split-stages-plan)'s
+  `validators/five-pca/pcas.tsv/validate.R`).
+
+Both import the shared helpers under `src/common/` (read one file path, load the
+format, assertion utilities), so the two feel like one contract. **Don't
+duplicate the same `STAGE/OUTPUT` validator across both repos:** keep this repo's
+validators generic/inheritable, leave stage-specific ones to the plan, and
+*pick* the plan's validators (`pixi run fixtures`, see *`omnibenchmark.yaml` —
+module config + plan link*) to check the shared helpers keep running against the
+real contract.
 
 ### `actions/`
 A **catalog of reusable GitHub Actions** for modules. Each subdirectory is one
@@ -89,26 +131,89 @@ stay lean and need not be pixi-based. `actions/install.sh` drops an action's
 thin caller workflow into a module's `.github/workflows/` (plain POSIX sh, no
 pixi assumption, non-destructive). See `actions/README.md`.
 
-Note: these are actions, not workflows, so **nothing in `actions/` runs in this
-repo** — an `action.yml` only executes when another repo's workflow `uses:` it.
-This repo has no `.github/workflows/` of its own. The first action is
-`validate-module` (`ob validate module` against omnibenchmark's `main`).
+Note: these are actions, not workflows, so **nothing in `actions/` runs when
+this repo's CI runs** — an `action.yml` only executes when another repo's
+workflow `uses:` it. (This repo's own `.github/workflows/ci.yml` tests the
+repo's deliverables — see *Continuous integration* below — not the catalog.)
+The first action is `validate-module` (`ob validate module` against
+omnibenchmark's `main`).
 
 ### `docs/`
 Documentation aimed at module authors: how to generate a module, how to declare
 its language and stages, how to run validation, and how to take a
-`copier update`.
+`copier update`. So far this holds `ci.md` (adding the `validate-module` action
+to a module). Doc pages may embed real files verbatim (see *Developer tasks*),
+so don't hand-edit a fenced block wrapped in `<!-- embed:… -->` markers — edit
+the source file and run `pixi run docs`.
+
+### `omnibenchmark.yaml` — module config + plan link
+A *plan* (master plan) is an omnibenchmark benchmark definition — e.g.
+[`omni-scrna/split-stages-plan`](https://github.com/omni-scrna/split-stages-plan),
+whose `benchmark_conda.yaml` lays out the stages (data → QC → HVGs → PCA →
+clustering). Modules generated from this boilerplate implement those stages; the
+plan owns the validators for each stage's outputs.
+
+This repo carries its own `omnibenchmark.yaml`, which does double duty:
+
+```yaml
+entrypoints:
+  default: run.sh        # placeholder — real entrypoints (validators) come later
+template-for:
+  - https://github.com/omni-scrna/split-stages-plan
+```
+
+- **`entrypoints`** make the repo a valid omnibenchmark module, so it
+  **self-validates**: `ob validate module .` (and the `validate-module` action)
+  pass against it. CI dogfoods the action on this repo (see *Continuous
+  integration*). The validator only requires an `entrypoints.default` key, not a
+  working entrypoint yet — hence the `run.sh` placeholder.
+- **`template-for`** declares which plan(s) this boilerplate scaffolds — the
+  source of truth for "which plan do we belong to." `ob` ignores the key;
+  `scripts/pick_fixtures.sh` (`pixi run fixtures`) reads it to shallow+sparse-clone
+  each plan's `validators/` into a gitignored `.fixtures/` for local work.
+
+### `scripts/` and `pixi.toml`
+Maintenance for working *on* the template itself — **never copied into a
+module** (Copier renders `src/common/`, not these). The root `pixi.toml` is a
+dev-task manifest, deliberately separate from `actions/*/pixi.toml` (which are
+private action toolchains). Its tasks:
+
+- `pixi run docs` — re-embed file snippets into the docs.
+- `pixi run docs-check` — fail if any embedded snippet is stale.
+
+`scripts/embed_snippets.py` (stdlib only) injects a referenced file verbatim
+into the `<!-- embed:PATH -->` / `<!-- /embed -->` block of each Markdown file
+listed in its `TARGETS`. This keeps a doc's copy of a file from drifting by
+making the **real file the single source of truth**. `docs-check` runs in CI
+(below); run `docs` locally to fix a stale embed.
+
+### Continuous integration
+`.github/workflows/ci.yml` tests **this repo's own deliverables**. Two jobs:
+`docs` gates docs sync (`pixi run docs-check`), and `validate-module` dogfoods
+the catalog action against this repo (`uses: ./actions/validate-module`) — which
+works because the repo doubles as a module (`omnibenchmark.yaml`). That
+self-validation is also the **only place the action runs live on GitHub**, since
+a composite action otherwise only executes when another repo `uses:` it. Keep CI
+focused on what this repo ships.
 
 ## Conventions to preserve
 
 - **Language separation:** never mix Python and R boilerplate in a shared path;
   use `src/common/python/` and `src/common/r/`.
-- **Stage/output routing (future):** when validators land, route them as
-  `validators/<STAGE_NAME>/<OUTPUT_NAME>`. Not in scope yet.
+- **Stage/output routing:** validators route as
+  `validators/<STAGE_NAME>/<OUTPUT_NAME>/validate.<ext>`, one file path per
+  validator. This mirrors the plan's convention — keep it identical so picked
+  fixtures run unchanged.
 - **Copier-templated paths:** rendered files use Jinja conditionals / `.jinja`
   suffixes so a module only materializes what it needs. Preserve the
   conditionals when editing templated files; don't hard-code one language's
   assumptions into shared logic.
+- **Embedded doc snippets:** when a doc must show a file that also exists for
+  real (e.g. a caller workflow), embed it with `<!-- embed:PATH -->` markers and
+  let `pixi run docs` fill it, rather than pasting a copy. The real file stays
+  the source of truth. Terser, hand-written *teaching* examples (a condensed
+  `uses:` snippet in a README) are fine to keep inline — embed only when the doc
+  is meant to mirror a shipped file exactly.
 
 ## Working in this repo
 

@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+message: "If you use this module scaffolding, please cite it."
+title: "omni-scrna boilerplate"
+authors:
+  - family-names: Traven
+    given-names: B
+version: 1.0
+repository-code: "https://github.com/omni-scrna/boilerplate"
+license: MIT

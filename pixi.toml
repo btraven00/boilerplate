@@ -1,0 +1,22 @@
+# Developer tasks for the boilerplate repo itself.
+#
+# This manifest is for working ON the template, not for modules generated FROM
+# it. It is never copied into a module (Copier renders src/common/, not this).
+# Keep it to dev chores: doc sync, checks, and similar maintenance helpers.
+
+[workspace]
+name = "boilerplate-dev"
+version = "0.1.0"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = ">=3.12,<3.14"
+
+[tasks]
+# Re-embed file snippets into the docs (single source of truth = the real files).
+docs = "python scripts/embed_snippets.py"
+# Fail if any embedded snippet is stale — wire this into CI to catch doc drift.
+docs-check = "python scripts/embed_snippets.py --check"
+# Pick the linked plan's validators into .fixtures/ for local validator work.
+fixtures = "sh scripts/pick_fixtures.sh"

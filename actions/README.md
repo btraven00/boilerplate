@@ -14,9 +14,10 @@ Actions are *opt-in*. A module picks the ones it wants; nothing is forced.
 > `src/common/` use the opposite model — copied in, author-owned — because they
 > run locally and are meant to be edited.)
 >
-> Because these are actions and not workflows, **nothing here runs in this
-> repo**: an `action.yml` only executes when another repo's workflow `uses:` it.
-> This repo has no `.github/workflows/` of its own and stays inert.
+> Because these are actions and not workflows, **the catalog actions don't run
+> in this repo**: an `action.yml` only executes when another repo's workflow
+> `uses:` it. (The repo does have its own `.github/workflows/ci.yml`, but that
+> tests this repo's deliverables — docs sync, validators — not the catalog.)
 
 ## Anatomy of an action
 
