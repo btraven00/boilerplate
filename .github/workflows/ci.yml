@@ -1,8 +1,8 @@
 # CI for the boilerplate repo itself — tests this repo's own deliverables.
 #
 # This does NOT run the catalog actions (a composite action only executes when
-# another repo `uses:` it). It exercises what lives here: that docs stay in
-# sync, and — once validators land — that validator logic works.
+# another repo `uses:` it). Merges to main should be gated on both jobs being
+# green (set branch protection to require "Checks" and "Self-validates").
 name: CI
 
 on:
@@ -12,18 +12,17 @@ on:
   workflow_dispatch:
 
 jobs:
-  docs:
-    name: Docs in sync
+  checks:
+    name: Checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: prefix-dev/setup-pixi@v0.9.6
         with:
           manifest-path: pixi.toml
-      - name: Embedded snippets are current
-        # Fails if a doc's embedded file drifted from its source — run
-        # `pixi run docs` locally to fix.
-        run: pixi run docs-check
+      # docs-sync + ruff + mypy + Python/R tests for src/common. Run `pixi run
+      # check` locally to reproduce.
+      - run: pixi run check
 
   validate-module:
     name: Self-validates as a module

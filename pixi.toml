@@ -2,7 +2,7 @@
 #
 # This manifest is for working ON the template, not for modules generated FROM
 # it. It is never copied into a module (Copier renders src/common/, not this).
-# Keep it to dev chores: doc sync, checks, and similar maintenance helpers.
+# CI (.github/workflows/ci.yml) runs `pixi run check` and gates merges on it.
 
 [workspace]
 name = "boilerplate-dev"
@@ -12,11 +12,26 @@ platforms = ["linux-64"]
 
 [dependencies]
 python = ">=3.12,<3.14"
+# To run the R side of src/common in tests. jsonlite is the only runtime dep of
+# src/common/r/cli.R (it parses the JSON interface schema).
+r-base = ">=4.3"
+r-jsonlite = "*"
+# Minimal Python lint + typecheck. (R linting/typechecking intentionally omitted
+# to keep the toolchain small — R has no standard type checker, and lintr is heavy.)
+ruff = "*"
+mypy = "*"
 
 [tasks]
 # Re-embed file snippets into the docs (single source of truth = the real files).
 docs = "python scripts/embed_snippets.py"
-# Fail if any embedded snippet is stale — wire this into CI to catch doc drift.
 docs-check = "python scripts/embed_snippets.py --check"
-# Pick the linked plan's validators into .fixtures/ for local validator work.
-fixtures = "sh scripts/pick_fixtures.sh"
+
+# Tests for src/common (Python + R).
+test = { cmd = "python -m unittest discover -s tests -p 'test_*.py' && Rscript tests/test_cli.R" }
+
+# Minimal quality gates.
+lint = "ruff check src/common/python tests scripts"
+typecheck = "mypy src/common/python"
+
+# What CI runs and what merges are gated on. Keep this green.
+check = { depends-on = ["docs-check", "lint", "typecheck", "test"] }

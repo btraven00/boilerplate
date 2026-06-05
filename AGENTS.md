@@ -74,56 +74,50 @@ Concretely, this means:
 ├── pixi.toml            # dev tasks for working ON the template (not copied into modules)
 ├── .github/workflows/   # this repo's own CI (docs sync + self-validation, not the catalog)
 ├── scripts/             # repo maintenance helpers (e.g. doc-snippet embedding)
+├── tests/               # tests for src/common (template-only, gate merges)
 ├── actions/             # reusable CI / automation entry points
 ├── docs/                # module-author documentation
 ├── src/
 │   └── common/          # shared code copied into every module
 │       ├── python/      # rendered for Python modules
-│       └── r/           # rendered for R modules
+│       ├── r/           # rendered for R modules
+│       └── schema/      # JSON interface specs (one CLI contract, two languages)
 └── validators/          # I/O contract checks, routed by stage/output
 ```
 
-Note for agents: `actions/`, `docs/`, `scripts/`, `.github/workflows/`,
-`omnibenchmark.yaml`, and the root `pixi.toml` have content; `validators/` holds
-a single copied example so far (see below); `src/common/{python,r}/` is still an
-**empty placeholder** whose *intended* purpose is described below. Do not assume
-files exist — check first.
+Note for agents: most directories now have content. `src/common/{python,r}/`
+holds the schema-driven CLI engine (`cli.py` / `cli.R`); `src/common/schema/`
+holds one example interface (`embedding.json`); `validators/` holds one copied
+example. These are early/spike-stage — read before assuming a shape.
 
-### `src/common/{python,r}/`
-Shared, language-split utilities that get copied into a module: logging setup,
-format converters, a thin CLI, and helpers for reading/writing the benchmark's
-data formats. The language split exists so Copier can conditionally render only
-the language(s) a module declares. **Add new shared utilities under the correct
-language directory**, and keep the public surface (function/CLI names) stable
-across languages where it makes sense, so the two implementations feel like one
-contract.
+### `src/common/{python,r}/` and `src/common/schema/`
+Shared, language-split utilities copied into a module — a **reserved,
+overwrite-on-update path**: authors are told not to edit it, so it can be
+re-rendered cleanly (see *Working in this repo*). Keep the public surface
+(function/CLI names) **identical across languages** so the Python and R
+implementations feel like one contract; keep dependencies light.
+
+The first utility is **schema-driven CLI parsing**. An *interface* — a named,
+versioned CLI contract owned by a benchmark — is defined as data in
+`src/common/schema/<interface>.json`; `cli.py` (stdlib `argparse`) and `cli.R`
+(base R + `jsonlite`, *not* the `argparse` package, which pulls Python) build
+the same parser from it. A module "satisfies" an interface by carrying its
+schema and parsing against it. **Add new shared utilities under the correct
+language directory**, with matching surfaces.
 
 ### `validators/`
 I/O contract checks, routed `validators/<STAGE_NAME>/<OUTPUT_NAME>/validate.<ext>`
 — a self-documenting layout so tooling can discover a stage's contract by path.
 Each validator receives a single output file path and uses as few dependencies
-as possible. The routing is shared with the plan, so a validator written in one
-home runs unchanged in the other.
+as possible. The routing mirrors the plan's, so a validator written in one home
+runs unchanged in the other (the convention's upstream prototype is
+[split-stages-plan](https://github.com/omni-scrna/split-stages-plan)'s
+`validators/`).
 
-Validators live in **two homes, split by role**:
-
-- **This repo's `validators/`** ships *reusable, inheritable* validators that a
-  module copies in (via Copier, like `src/common/`) to test its **own** outputs
-  *before* the benchmark runs — generic checks (a TSV is well-formed, an `.h5ad`
-  opens, expected shape/columns) and starter templates an author can specialize.
-  Author-owned and editable once copied.
-- **The plan** owns the *authoritative, stage-specific* validator for each
-  `STAGE/OUTPUT`, run at benchmark time (the upstream prototype of this
-  convention — see [split-stages-plan](https://github.com/omni-scrna/split-stages-plan)'s
-  `validators/five-pca/pcas.tsv/validate.R`).
-
-Both import the shared helpers under `src/common/` (read one file path, load the
-format, assertion utilities), so the two feel like one contract. As a rule,
-**don't duplicate the same `STAGE/OUTPUT` validator across both repos:** keep
-this repo's validators generic/inheritable, leave stage-specific ones to the
-plan, and *pick* the plan's validators (`pixi run fixtures`, see
-*`omnibenchmark.yaml` — module config + plan link*) to check the shared helpers
-keep running against the real contract.
+`five-pca/pcas.tsv/validate.R` is currently a copy from the plan, kept as a
+concrete example to build the shared scaffolding against — flagged with a `TODO`
+to remove once validators get a proper home. How validators are ultimately
+owned, distributed, and shared with `src/common/` helpers is still open design.
 
 **Temporary exception:** `validators/five-pca/pcas.tsv/validate.R` is a copy
 from the plan, kept here as a concrete example to build the shared scaffolding
@@ -177,9 +171,10 @@ template-for:
   integration*). The validator only requires an `entrypoints.default` key, not a
   working entrypoint yet — hence the `run.sh` placeholder.
 - **`template-for`** declares which plan(s) this boilerplate scaffolds — the
-  source of truth for "which plan do we belong to." `ob` ignores the key;
-  `scripts/pick_fixtures.sh` (`pixi run fixtures`) reads it to shallow+sparse-clone
-  each plan's `validators/` into a gitignored `.fixtures/` for local work.
+  source of truth for "which plan do we belong to" (`ob` ignores the key). It is
+  the anchor for the *interface* idea: a module satisfies a benchmark's
+  versioned CLI contract, defined as data in `src/common/schema/` (see
+  `src/common/`).
 
 ### `scripts/` and `pixi.toml`
 Maintenance for working *on* the template itself — **never copied into a
@@ -187,21 +182,28 @@ module** (Copier renders `src/common/`, not these). The root `pixi.toml` is a
 dev-task manifest, deliberately separate from `actions/*/pixi.toml` (which are
 private action toolchains). Its tasks:
 
-- `pixi run docs` — re-embed file snippets into the docs.
-- `pixi run docs-check` — fail if any embedded snippet is stale.
+- `pixi run docs` / `docs-check` — re-embed doc snippets / fail on drift.
+- `pixi run test` — Python + R tests for `src/common` (under `tests/`).
+- `pixi run lint` / `typecheck` — `ruff` and `mypy` over the Python side.
+- `pixi run check` — all of the above; this is what CI runs and gates on.
 
 `scripts/embed_snippets.py` (stdlib only) injects a referenced file verbatim
 into the `<!-- embed:PATH -->` / `<!-- /embed -->` block of each Markdown file
-listed in its `TARGETS`. This keeps a doc's copy of a file from drifting by
-making the **real file the single source of truth**. `docs-check` runs in CI
-(below); run `docs` locally to fix a stale embed.
+listed in its `TARGETS`, keeping a doc's copy from drifting from the **real
+file**. Run `docs` locally to fix a stale embed.
+
+Tests live in `tests/` (template-only, not copied into modules). Keep them
+green — they gate merges. R linting/typechecking are intentionally omitted to
+stay minimal (R has no standard type checker; `lintr` is heavy).
 
 ### Continuous integration
-`.github/workflows/ci.yml` tests **this repo's own deliverables**. Two jobs:
-`docs` gates docs sync (`pixi run docs-check`), and `validate-module` dogfoods
-the catalog action against this repo (`uses: ./actions/validate-module`) — which
-works because the repo doubles as a module (`omnibenchmark.yaml`). That
-self-validation is also the **only place the action runs live on GitHub**, since
+`.github/workflows/ci.yml` tests **this repo's own deliverables** and **gates
+merges** (set branch protection to require both jobs). The `checks` job runs
+`pixi run check` (docs-sync + `ruff` + `mypy` + Python/R tests). The
+`validate-module` job dogfoods the catalog action against this repo
+(`uses: ./actions/validate-module`) — which works because the repo doubles as a
+module (`omnibenchmark.yaml`), and is also the **only place the action runs live
+on GitHub**, since
 a composite action otherwise only executes when another repo `uses:` it. Keep CI
 focused on what this repo ships.
 
@@ -211,8 +213,8 @@ focused on what this repo ships.
   use `src/common/python/` and `src/common/r/`.
 - **Stage/output routing:** validators route as
   `validators/<STAGE_NAME>/<OUTPUT_NAME>/validate.<ext>`, one file path per
-  validator. This mirrors the plan's convention — keep it identical so picked
-  fixtures run unchanged.
+  validator. Keep it identical to the plan's convention so a validator runs
+  unchanged in either repo.
 - **Copier-templated paths:** rendered files use Jinja conditionals / `.jinja`
   suffixes so a module only materializes what it needs. Preserve the
   conditionals when editing templated files; don't hard-code one language's

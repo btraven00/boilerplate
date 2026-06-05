@@ -1,3 +1,4 @@
 pixi.lock
 .pixi/
-.fixtures/
+.mypy_cache/
+.ruff_cache/
