@@ -175,6 +175,7 @@ entrypoints:
 template-for:
   - name: split-stages   # short LABEL for the benchmark
     url: https://github.com/omni-scrna/split-stages-plan
+    plan: benchmark_conda.yaml   # the benchmark definition within that repo
 implements:
   - split-stages/embedding@0.1.0   # <benchmark-label>/<interface>@<version>
 ```
@@ -183,13 +184,15 @@ implements:
   **self-validates**: `ob validate module .` (and the `validate-module` action)
   pass against it. The validator only requires an `entrypoints.default` key, not
   a working entrypoint yet — hence the `run.sh` placeholder.
-- **`template-for`** lists the benchmark(s) this scaffolds for, each with a short
-  `name` LABEL (`ob` ignores the key).
+- **`template-for`** lists the benchmark(s) this scaffolds for. Each entry is one
+  benchmark: a short `name` LABEL, the repo `url`, and `plan` (the benchmark
+  definition file within that repo — a repo may hold several). `ob` ignores it.
 - **`implements`** declares the interface(s) a module satisfies, as
   `<benchmark-label>/<interface>@<version>`. The interface is defined as data in
-  `src/common/schema/<interface>.json`; tooling can check the carried schema
-  matches the declared label/version. (Here it's illustrative — this repo is a
-  template that also self-validates.)
+  `src/common/schema/<interface>.json`. `pixi run check-interfaces` verifies each
+  `implements` entry resolves to a `template-for` label and a carried schema with
+  the matching `interface` + `version` (a CI gate). (Here it's illustrative —
+  this repo is a template that also self-validates.)
 
 ### `scripts/` and `pixi.toml`
 Maintenance for working *on* the template itself — **never copied into a
@@ -200,6 +203,8 @@ private action toolchains). Its tasks:
 - `pixi run docs` / `docs-check` — re-embed doc snippets / fail on drift.
 - `pixi run version` / `version-check` — stamp `src/common/VERSION` into the
   language sources / fail on drift.
+- `pixi run check-interfaces` — verify `omnibenchmark.yaml` `implements` matches
+  `template-for` labels and the carried `src/common/schema/` specs.
 - `pixi run test` — Python + R tests for `src/common` (under `tests/`).
 - `pixi run lint` / `typecheck` — `ruff` and `mypy` over the Python side.
 - `pixi run check` — all of the above; this is what CI runs and gates on.
@@ -216,7 +221,8 @@ stay minimal (R has no standard type checker; `lintr` is heavy).
 ### Continuous integration
 `.github/workflows/ci.yml` tests **this repo's own deliverables** and **gates
 merges** (set branch protection to require both jobs). The `checks` job runs
-`pixi run check` (docs-sync + `ruff` + `mypy` + Python/R tests). The
+`pixi run check` (docs-sync, VERSION stamp, interface consistency, `ruff`,
+`mypy`, Python/R tests). The
 `validate-module` job dogfoods the catalog action against this repo
 (`uses: ./actions/validate-module`) — which works because the repo doubles as a
 module (`omnibenchmark.yaml`), and is also the **only place the action runs live

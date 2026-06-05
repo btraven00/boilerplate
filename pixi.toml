@@ -20,6 +20,8 @@ r-jsonlite = "*"
 # to keep the toolchain small — R has no standard type checker, and lintr is heavy.)
 ruff = "*"
 mypy = "*"
+# Read omnibenchmark.yaml in the interface-consistency check.
+pyyaml = "*"
 
 [tasks]
 # Re-embed file snippets into the docs (single source of truth = the real files).
@@ -30,6 +32,9 @@ docs-check = "python scripts/embed_snippets.py --check"
 version = "python scripts/stamp_version.py"
 version-check = "python scripts/stamp_version.py --check"
 
+# Verify omnibenchmark.yaml `implements` matches the carried interface schemas.
+check-interfaces = "python scripts/check_interfaces.py"
+
 # Tests for src/common (Python + R).
 test = { cmd = "python -m unittest discover -s tests -p 'test_*.py' && Rscript tests/test_cli.R" }
 
@@ -38,4 +43,4 @@ lint = "ruff check src/common/python tests scripts"
 typecheck = "mypy src/common/python"
 
 # What CI runs and what merges are gated on. Keep this green.
-check = { depends-on = ["docs-check", "version-check", "lint", "typecheck", "test"] }
+check = { depends-on = ["docs-check", "version-check", "check-interfaces", "lint", "typecheck", "test"] }
