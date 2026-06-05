@@ -15,7 +15,7 @@ runs:
   using: composite
   steps:
     - name: Set up omnibenchmark toolchain (pixi)
-      uses: prefix-dev/setup-pixi@v0.8.10
+      uses: prefix-dev/setup-pixi@v0.9.6
       with:
         # The action ships its own manifest; this never touches the module's repo.
         manifest-path: ${{ github.action_path }}/pixi.toml
