@@ -209,6 +209,38 @@ implements:
   the matching `interface` + `version` (a CI gate). (Here it's illustrative —
   this repo is a template that also self-validates.)
 
+### Vendoring shared code + interfaces (`scripts/pull.py`, interim)
+How the shared code and interface schemas get *into* a module — until `ob` owns
+it. `scripts/pull.py` (`pixi run pull`, run from a **module** root, not here)
+reads that module's `omnibenchmark.yaml` and shallow+sparse-fetches at pinned
+refs:
+
+- **`boilerplate:`** `{repo, ref, lang}` → the common engine + schemas into the
+  module's `common/` package (so `from common.cli import parse_args` works).
+- each **`implements:`** `<label>/<iface>@<ver>` → the benchmark's authoritative
+  `interfaces/<iface>.json` (repo/ref from the matching `template-for` entry),
+  overlaying `common/schema/`.
+
+Vendored files are committed in the module (offline-runnable; `check-interfaces`
+needs no network) — `pull` just refreshes them. A consuming module declares:
+
+```yaml
+boilerplate:
+  repo: https://github.com/omni-scrna/boilerplate
+  ref: v0.1.0          # pin; tag or branch
+  lang: python
+template-for:
+  - { name: split-stages, repo: …/split-stages-plan, plan: benchmark_conda.yaml, ref: main }
+implements:
+  - split-stages/embedding@0.1.0
+```
+
+This is deliberately lightweight and easy to delete once `ob` subsumes it (no
+submodule residue). Precondition for the interface pull: the benchmark must
+publish schemas at `interfaces/<iface>.json` (not the case yet — `pull` notes
+and skips). Discovery is bidirectional: a plan can point at its boilerplate, and
+the boilerplate's `template-for` points back at the plan.
+
 ### `scripts/` and `pixi.toml`
 Maintenance for working *on* the template itself — **never copied into a
 module** (Copier renders `src/common/`, not these). The root `pixi.toml` is a

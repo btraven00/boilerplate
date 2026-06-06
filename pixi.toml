@@ -35,6 +35,10 @@ version-check = "python scripts/stamp_version.py --check"
 # Verify omnibenchmark.yaml `implements` matches the carried interface schemas.
 check-interfaces = "python scripts/check_interfaces.py"
 
+# Vendor common code + interface schemas into a module at pinned refs (interim,
+# pre-`ob`). Run from a module root, not here (the boilerplate is the source).
+pull = "python scripts/pull.py"
+
 # Tests for src/common (Python + R).
 test = { cmd = "python -m unittest discover -s tests -p 'test_*.py' && Rscript tests/test_cli.R" }
 

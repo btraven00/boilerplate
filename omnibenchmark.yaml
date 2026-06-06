@@ -13,6 +13,7 @@ template-for:
   - name: split-stages
     repo: https://github.com/omni-scrna/split-stages-plan
     plan: benchmark_conda.yaml
+    ref: main              # pin: tag/branch to vendor interfaces from
 
 # Interfaces this module implements, as <benchmark-label>/<interface>@<version>.
 # The interface is defined as data in src/common/schema/<interface>.json.
