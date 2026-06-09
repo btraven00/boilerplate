@@ -106,6 +106,32 @@ the same parser from it. A module "satisfies" an interface by carrying its
 schema and parsing against it. **Add new shared utilities under the correct
 language directory**, with matching surfaces.
 
+**Interface naming.** An interface name == the **entrypoint** a module exposes
+for a stage (`pca`, `knn`), which is the stable handle the plan binds a module by
+(`repository.entrypoint:` in `benchmark_conda.yaml`). It is *not* the plan's
+internal stage `id` (those carry ordinal prefixes, e.g. `five-pca`, and language
+variants like `embedding-py`/`embedding-r` share one interface). Stage-id,
+entrypoint, and output namespaces are distinct and **mapped, not unified** — so
+never rename a module's existing flags/outputs to "match" a stage id.
+
+**Layering.** An interface is composed from up to three files in `schema/`, each
+contributing args, later layers winning per `flag`:
+
+- `_base.json` — universal args every module gets (`--output_dir`, `--name`);
+  not a stage. Vendored from the boilerplate like the engine.
+- `<interface>.json` — the stage's I/O contract (benchmark-owned; reserved,
+  overwrite-on-update).
+- `<interface>.extends.json` — module-local extras/overrides, e.g. method
+  parameters (`--solver`, `--n_components`). **Author-owned**, a *different file*
+  so `pull`/`copier update` never overwrites it; same `flag` as a lower layer
+  overrides it.
+
+`parse_args("pca")` discovers and merges all three by convention — entrypoints
+don't change. A module carrying only `<interface>.json` behaves exactly as
+before, so this is backward-compatible. Files starting with `_` or ending
+`.extends.json` are not stages (auto-pick skips them). An arg may carry an
+optional `choices` list (an enum), validated like `argparse`.
+
 **Import convention.** In a *rendered* module the shared code is the `common`
 package (Copier drops the language segment, leaving the chosen language's files
 plus `schema/`), so entrypoints import it as:

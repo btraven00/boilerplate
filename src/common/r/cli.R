@@ -17,6 +17,15 @@
 #
 # Conventions: every arg is required; unknown flags rejected; dest defaults to
 # the flag with dots/dashes -> "_" unless overridden. Types: path|string|integer|number.
+# An optional "choices" list restricts accepted values (an enum).
+#
+# Layering — an interface is composed from up to three files in schema/, each
+# contributing args, later layers winning per flag:
+#   _base.json               universal args every module gets (--output_dir, --name)
+#   <interface>.json         the stage's I/O contract (benchmark-owned)
+#   <interface>.extends.json module-local extras/overrides (author-owned)
+# parse_args("pca") merges all three by convention; a module carrying only
+# <interface>.json behaves as before. "_*" and "*.extends.json" are not stages.
 #
 # Usage in an entrypoint (in a rendered module the shared code is `common/`):
 #   source("common/cli.R")              # R has no import namespace; we source()
@@ -39,7 +48,7 @@ suppressPackageStartupMessages(library(jsonlite))
   if (length(f)) return(dirname(normalizePath(f)))
   getwd()
 }
-COMMON_VERSION <- "0.1.0"  # x-release-version — stamped from src/common/VERSION by `pixi run version`
+COMMON_VERSION <- "0.2.0"  # x-release-version — stamped from src/common/VERSION by `pixi run version`
 
 # Works under both layouts: rendered `common/cli.R` (schema is a sibling) and the
 # template's `common/r/cli.R` (schema is one level up).
@@ -71,18 +80,54 @@ common_version <- function() COMMON_VERSION
 }
 `%||%` <- function(a, b) if (is.null(a) || is.na(a)) b else a
 
+.BASE_SCHEMA <- "_base"             # universal args, merged first; not a stage
+.EXTENDS_SUFFIX <- ".extends.json"  # module-local overlay for <interface>
+
+# A stage schema is a plain <interface>.json — not the base ("_*") nor an overlay.
+.is_stage_schema <- function(name)
+  !startsWith(name, "_") && !endsWith(name, .EXTENDS_SUFFIX)
+
+.read_schema <- function(path) {
+  if (!file.exists(path)) return(NULL)
+  jsonlite::fromJSON(path, simplifyDataFrame = FALSE)
+}
+
+# Overlay `child` args onto `parent`: same flag overrides (keeping position), a
+# new flag is appended.
+.merge_args <- function(parent, child) {
+  flags <- vapply(parent, function(a) a$flag, character(1))
+  for (a in child) {
+    i <- match(a$flag, flags)
+    if (is.na(i)) { parent <- c(parent, list(a)); flags <- c(flags, a$flag) }
+    else parent[[i]] <- a
+  }
+  parent
+}
+
+# Compose an interface: _base (universal) -> <interface> (stage contract) ->
+# <interface>.extends (module-local overrides), later layers winning per flag.
 load_interface <- function(interface = NULL, schema_dir = .SCHEMA_DIR) {
   if (is.null(interface)) {
-    found <- list.files(schema_dir, pattern = "\\.json$", full.names = TRUE)
-    if (length(found) != 1L)
-      stop(sprintf("specify an interface; found %d schemas in %s",
-                   length(found), schema_dir))
-    path <- found
-  } else {
-    path <- file.path(schema_dir, paste0(interface, ".json"))
+    found <- list.files(schema_dir, pattern = "\\.json$")
+    stages <- found[vapply(found, .is_stage_schema, logical(1))]
+    if (length(stages) != 1L)
+      stop(sprintf("specify an interface; found %d stage schemas in %s",
+                   length(stages), schema_dir))
+    interface <- sub("\\.json$", "", stages)
   }
-  if (!file.exists(path)) stop(sprintf("interface schema not found: %s", path))
-  jsonlite::fromJSON(path, simplifyDataFrame = FALSE)
+  stage_path <- file.path(schema_dir, paste0(interface, ".json"))
+  if (!file.exists(stage_path)) stop(sprintf("interface schema not found: %s", stage_path))
+  spec <- jsonlite::fromJSON(stage_path, simplifyDataFrame = FALSE)
+
+  args <- list()
+  base <- .read_schema(file.path(schema_dir, paste0(.BASE_SCHEMA, ".json")))
+  if (!is.null(base)) args <- .merge_args(args, base$args)
+  args <- .merge_args(args, spec$args)
+  ext <- .read_schema(file.path(schema_dir, paste0(interface, .EXTENDS_SUFFIX)))
+  if (!is.null(ext)) args <- .merge_args(args, ext$args)
+
+  spec$args <- args
+  spec
 }
 
 parse_args <- function(interface = NULL,
@@ -94,7 +139,7 @@ parse_args <- function(interface = NULL,
   for (arg in schema$args) {
     key <- sub("^--", "", arg$flag)
     dest <- if (!is.null(arg$dest)) arg$dest else .default_dest(arg$flag)
-    specs[[key]] <- list(type = arg$type, dest = dest)
+    specs[[key]] <- list(type = arg$type, dest = dest, choices = arg$choices)
   }
 
   values <- list()
@@ -106,7 +151,11 @@ parse_args <- function(interface = NULL,
     if (is.null(specs[[key]])) stop(sprintf("unknown argument: --%s", key))
     if (i + 1L > length(argv)) stop(sprintf("--%s requires a value", key))
     sp <- specs[[key]]
-    values[[sp$dest]] <- .coerce(argv[[i + 1L]], sp$type)
+    val <- .coerce(argv[[i + 1L]], sp$type)
+    if (!is.null(sp$choices) && !(val %in% unlist(sp$choices)))
+      stop(sprintf("--%s must be one of: %s", key,
+                   paste(unlist(sp$choices), collapse = ", ")))
+    values[[sp$dest]] <- val
     i <- i + 2L
   }
 
