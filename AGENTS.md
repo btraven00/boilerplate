@@ -212,12 +212,14 @@ omnibenchmark's `main`).
 ### `docs/`
 Documentation aimed at module authors: how to generate a module, how to declare
 its language and stages, how to run validation, and how to take a
-`copier update`. So far this holds `cli.md` (the shared CLI helpers: types,
-`choices`, and the `add_base_args`/`add_stage_args` injection) and `ci.md` (adding
-the `validate-module` action to a module). Doc pages may embed real files
-verbatim (see *Developer tasks*),
-so don't hand-edit a fenced block wrapped in `<!-- embed:… -->` markers — edit
-the source file and run `pixi run docs`.
+`copier update`. So far this holds `cli.md` (module-author guide: wiring an
+entrypoint's CLI with the `add_base_args`/`add_stage_args` helpers), `ci.md`
+(adding the `validate-module` action to a module), and `stage-interfaces.md`
+(the schema *format* — types, `choices`, `dest`, base/stage/method ownership —
+aimed at benchmark authors and boilerplate contributors, not module authors).
+Doc pages may embed real files verbatim (see *Developer tasks*), so don't
+hand-edit a fenced block wrapped in `<!-- embed:… -->` markers — edit the source
+file and run `pixi run docs`.
 
 ### `omnibenchmark.yaml` — module config + plan link
 A *plan* (master plan) is an omnibenchmark benchmark definition — e.g.
