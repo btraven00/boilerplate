@@ -28,8 +28,16 @@ stopifnot(errors(parse_args("embedding", argv = c(emb, "--bogus", "x"))))   # un
 stopifnot(errors(parse_args("embedding", argv = c("--name", "n"))))         # missing
 stopifnot(errors(load_interface("does-not-exist")))                          # bad iface
 
-# auto-pick the single schema
-stopifnot(parse_args(argv = emb)$name == "n")
+# auto-pick the single STAGE schema (in a dir holding exactly one)
+dap <- tempfile(); dir.create(dap)
+writeLines('{"interface":"only","version":"0","args":[{"flag":"--x","type":"string"}]}',
+           file.path(dap, "only.json"))
+stopifnot(parse_args(argv = c("--x", "v"), schema_dir = dap)$x == "v")
+# auto-pick is ambiguous when a dir ships several stage schemas
+dap2 <- tempfile(); dir.create(dap2)
+writeLines('{"interface":"a","version":"0","args":[]}', file.path(dap2, "a.json"))
+writeLines('{"interface":"b","version":"0","args":[]}', file.path(dap2, "b.json"))
+stopifnot(errors(parse_args(schema_dir = dap2)))
 
 # type coercion via a temp schema
 d <- tempfile(); dir.create(d)

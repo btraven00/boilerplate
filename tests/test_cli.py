@@ -37,8 +37,19 @@ class TestCli(unittest.TestCase):
             cli.parse_args("embedding", ["--name", "n"])
 
     def test_auto_pick_single_schema(self):
-        a = cli.parse_args(None, EMB)
-        self.assertEqual(a.name, "n")
+        d = self._schema_dir({
+            "only.json": {"interface": "only", "version": "0", "args": [
+                {"flag": "--x", "type": "string"}]},
+        })
+        self.assertEqual(cli.load_interface(None, d)["interface"], "only")
+
+    def test_auto_pick_ambiguous_raises(self):
+        d = self._schema_dir({
+            "a.json": {"interface": "a", "version": "0", "args": []},
+            "b.json": {"interface": "b", "version": "0", "args": []},
+        })
+        with self.assertRaises(SystemExit):
+            cli.load_interface(None, d)
 
     def test_type_coercion(self):
         schema = {"interface": "t", "args": [
