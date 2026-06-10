@@ -82,7 +82,7 @@ def _write_provenance(common: Path, *, repo: str, ref: str, lang: str,
     (common / ".provenance.json").write_text(json.dumps(prov, indent=2) + "\n")
 
 
-def _vendor_common(bp: dict, common: Path) -> None:
+def _vendor_common(bp: dict, common: Path) -> tuple[str, str | None]:
     lang = bp.get("lang", "python")
     ref = bp.get("ref", "main")
     src = _sparse_fetch(bp["repo"], ref, ["src/common"])
@@ -98,15 +98,16 @@ def _vendor_common(bp: dict, common: Path) -> None:
                           commit=commit, version=version)
     finally:
         shutil.rmtree(src, ignore_errors=True)
-    print(f"vendored common/ ({lang}) from {bp['repo']}@{ref} -> {commit[:12]} (v{version})")
+    return commit, version
 
 
-def _vendor_interfaces(cfg: dict, common: Path) -> None:
+def _vendor_interfaces(cfg: dict, common: Path) -> tuple[int, int]:
     benches = {
         e["name"]: e
         for e in (cfg.get("template-for") or [])
         if isinstance(e, dict) and "name" in e
     }
+    vendored = pending = 0
     for item in cfg.get("implements") or []:
         m = _IMPL.match(str(item))
         if not m:
@@ -114,6 +115,7 @@ def _vendor_interfaces(cfg: dict, common: Path) -> None:
         bench = benches.get(m["label"])
         if not bench:
             print(f"skip {item}: no template-for label '{m['label']}'", file=sys.stderr)
+            pending += 1
             continue
         iface, ref = m["iface"], bench.get("ref", "main")
         rel = f"interfaces/{iface}.json"
@@ -121,24 +123,38 @@ def _vendor_interfaces(cfg: dict, common: Path) -> None:
             src = _sparse_fetch(bench["repo"], ref, [rel])
         except subprocess.CalledProcessError:
             print(f"skip {item}: fetch from {bench['repo']}@{ref} failed", file=sys.stderr)
+            pending += 1
             continue
         try:
             if (src / rel).exists():
                 shutil.copy2(src / rel, common / "schema" / f"{iface}.json")
                 print(f"vendored common/schema/{iface}.json from {bench['repo']}@{ref}")
+                vendored += 1
             else:
                 print(f"note {item}: {rel} not published in {bench['repo']} yet",
                       file=sys.stderr)
+                pending += 1
         finally:
             shutil.rmtree(src, ignore_errors=True)
+    return vendored, pending
 
 
 def main() -> int:
     cfg = yaml.safe_load((Path.cwd() / "omnibenchmark.yaml").read_text()) or {}
     common = Path.cwd() / "common"
-    if cfg.get("boilerplate"):
-        _vendor_common(cfg["boilerplate"], common)
-    _vendor_interfaces(cfg, common)
+    bp = cfg.get("boilerplate")
+    synced = _vendor_common(bp, common) if bp else None
+    vendored, pending = _vendor_interfaces(cfg, common)
+
+    if synced:
+        commit, version = synced
+        msg = (f"OK: synced common/ <- {bp['repo']}@{bp.get('ref', 'main')} "
+               f"{commit[:12]} (v{version})")
+    else:
+        msg = "OK: nothing to sync (no `boilerplate:` in omnibenchmark.yaml)"
+    if vendored or pending:
+        msg += f"; interfaces: {vendored} vendored, {pending} pending"
+    print(msg)
     return 0
 
 
