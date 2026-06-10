@@ -9,6 +9,11 @@ Reads ./omnibenchmark.yaml and pulls, at pinned refs, via shallow+sparse git:
     interfaces/<iface>.json (repo/ref from the matching `template-for` entry),
     overlaying ./common/schema/<iface>.json.
 
+It also records the *resolved* source commit in ./common/.provenance.json — an
+exact sync witness, independent of `common/VERSION` (which only moves on a bump,
+so it can't tell apart two states sharing a version). Commit it: it's the record
+of what this module carries, especially when `ref` is a moving branch.
+
 This is the interim distribution mechanism; `ob` will subsume it. The script is
 CWD-relative (it reads ./omnibenchmark.yaml and writes ./common), so its own
 location doesn't matter — run it from your **module root** against the
@@ -20,11 +25,13 @@ boilerplate checked out as a sibling repo:
 """
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -51,6 +58,30 @@ def _copy_glob(src_dir: Path, dest_dir: Path) -> None:
             shutil.copy2(f, dest_dir / f.name)
 
 
+def _git_head(repo_dir: Path) -> str:
+    """Resolved commit SHA of the (shallow) clone."""
+    out = subprocess.run(
+        ["git", "-C", str(repo_dir), "rev-parse", "HEAD"],
+        check=True, capture_output=True, text=True)
+    return out.stdout.strip()
+
+
+def _write_provenance(common: Path, *, repo: str, ref: str, lang: str,
+                      commit: str, version: str | None) -> None:
+    """Stamp what was vendored, so the module witnesses its sync state exactly —
+    even when `ref` is a moving branch and VERSION hasn't been bumped."""
+    common.mkdir(parents=True, exist_ok=True)
+    prov = {
+        "repo": repo,
+        "ref": ref,
+        "commit": commit,
+        "version": version,
+        "lang": lang,
+        "fetched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    (common / ".provenance.json").write_text(json.dumps(prov, indent=2) + "\n")
+
+
 def _vendor_common(bp: dict, common: Path) -> None:
     lang = bp.get("lang", "python")
     ref = bp.get("ref", "main")
@@ -58,12 +89,16 @@ def _vendor_common(bp: dict, common: Path) -> None:
     try:
         _copy_glob(src / "src" / "common" / lang, common)
         _copy_glob(src / "src" / "common" / "schema", common / "schema")
-        version = src / "src" / "common" / "VERSION"
-        if version.exists():
-            shutil.copy2(version, common / "VERSION")
+        version_file = src / "src" / "common" / "VERSION"
+        version = version_file.read_text().strip() if version_file.exists() else None
+        if version is not None:
+            shutil.copy2(version_file, common / "VERSION")
+        commit = _git_head(src)
+        _write_provenance(common, repo=bp["repo"], ref=ref, lang=lang,
+                          commit=commit, version=version)
     finally:
         shutil.rmtree(src, ignore_errors=True)
-    print(f"vendored common/ ({lang}) from {bp['repo']}@{ref}")
+    print(f"vendored common/ ({lang}) from {bp['repo']}@{ref} -> {commit[:12]} (v{version})")
 
 
 def _vendor_interfaces(cfg: dict, common: Path) -> None:
