@@ -1,17 +1,19 @@
-# The shared CLI helpers
+# Shared CLI helpers
 
 This guide is for **module authors**: you write your own `argparse` (Python) or
 base-R CLI, and import a couple of helpers from `common/` to inject the *shared*
-parts — the universal base args and your stage's I/O contract — so Python and R
-modules share one contract without you re-typing it.
+parts that are provided by the benchmark (the universal base args and your
+stage's I/O contract), so Python and R modules share the same definition of the
+CLI arguments.
 
 ## The idea
 
-You own your entrypoint's parser. The flags that are **shared** — the universal
-base args, and the stage's I/O contract owned by the benchmark — are declared once
-as JSON in `common/schema/` and *added onto your parser* by `common/cli`. Your own
-method parameters you add by hand, in plain `argparse`, right next to them — so the
-whole CLI stays visible in your file.
+You own your entrypoint's parser. The flags that are **shared** (the universal
+base args, and the stage's I/O contract owned by the benchmark) are declared
+once as JSON in the boilerplate repo's `common/schema/` and *added onto your
+parser* by using `common/cli`. Your own any method parameters you add by hand,
+for python that's plain `argparse`. In this way the whole CLI for an entrypoint
+stays visible in your file.
 
 ```python
 import argparse
@@ -27,9 +29,8 @@ args = p.parse_args()
 # args.output_dir, args.name, args.pcas, args.solver, args.n_components
 ```
 
-R has no parser object (we use base R, not the `argparse` package), so the idiom
-is "assemble the spec list — `common` supplies the shared chunks, you append your
-own — then parse":
+For R we use base R (TODO: is this fine?), so the idiom is "assemble the spec
+list — `common` supplies the shared chunks, you append your own — then parse":
 
 ```r
 source("common/cli.R")
@@ -44,7 +45,7 @@ args <- parse_args(specs)
 
 ## A schema
 
-A stage's I/O contract is one file, `common/schema/<stage>.json`:
+A stage's I/O contract is declared in one file, `common/schema/<stage>.json`:
 
 <!-- embed:src/common/schema/embedding.json -->
 ```json
@@ -72,7 +73,8 @@ entry in `args` is one flag:
 | `choices` | no | allowed values — an enum |
 
 Every schema-declared arg is **required** (a run must be reproducible from its
-invocation line). Unknown flags are rejected by your parser as usual.
+invocation line, fully explicit, no defaults). Unknown flags are rejected by
+your parser.
 
 ### Types
 
@@ -99,8 +101,8 @@ An out-of-set value is rejected with a clear message **before** your code runs.
 ### `dest` — the attribute name
 
 By default a flag becomes an attribute with leading dashes stripped and `.`/`-`
-turned into `_`: `--pcas.tsv` → `args.pcas_tsv`. Override it with `dest` when you
-want a tidier name:
+turned into `_`: `--pcas.tsv` → `args.pcas_tsv`. Override it with `dest` when
+you want a tidier name:
 
 ```json
 { "flag": "--normalized_selected.h5", "dest": "input_h5", "type": "path" }
@@ -108,8 +110,8 @@ want a tidier name:
 
 ## What's shared vs. what's yours
 
-Two synced files back the helpers; your method params are not in a schema at all —
-you write them as plain `argparse`.
+Two synced files back the helpers; your method params are not in a schema at all
+— you write them as plain `argparse`.
 
 | source | what it holds | who owns it | on `pull` / update |
 |---|---|---|---|
@@ -132,9 +134,9 @@ you write them as plain `argparse`.
 ```
 <!-- /embed -->
 
-`add_base_args` and `add_stage_args` read these two files; your method parameters
-stay in your own entrypoint, so a `pull` (or later `copier update`) that rewrites
-the synced schema never touches them.
+`add_base_args` and `add_stage_args` read these two files; your method
+parameters stay in your own entrypoint, so a `pull` (or later `copier update`)
+that rewrites the synced schema never touches them.
 
 ### Worked example
 
@@ -170,26 +172,26 @@ So the effective CLI accepts:
 ## Naming an interface
 
 An interface name is the **entrypoint** your module exposes for a stage (`pca`,
-`knn`) — the stable handle the plan binds you by (`repository.entrypoint:` in the
-benchmark definition). It is *not* the plan's internal stage `id` (those carry
-ordinal prefixes, e.g. `five-pca`). Stage-id, entrypoint, and output namespaces
-are distinct and **mapped, not unified** — so never rename your existing flags or
-outputs just to "match" a stage id.
+`knn`) — the stable handle the plan binds you by (`repository.entrypoint:` in
+the benchmark definition). It is *not* the plan's internal stage `id` (those
+carry ordinal prefixes, e.g. `five-pca`). Stage-id, entrypoint, and output
+namespaces are distinct and **mapped, not unified** — so never rename your
+existing flags or outputs just to "match" a stage id.
 
 ## Where the files come from
 
-`common/cli.*`, `_base.json`, and each stage `<interface>.json` are vendored from
-the boilerplate / benchmark. Until `ob` owns this, refresh them with the
-boilerplate's `pull.py`, run **from your module root** against a sibling checkout
-of the boilerplate:
+`common/cli.*`, `_base.json`, and each stage `<interface>.json` are vendored
+from the boilerplate / benchmark. Until `ob` can automate, refresh them with the
+boilerplate's `pull.py`, run **from your module root** against a sibling
+checkout of the boilerplate:
 
 ```sh
 cd my-module && python ../boilerplate/scripts/pull.py
 ```
 
-It fetches at the ref pinned in your `omnibenchmark.yaml`. Your own method params
-live in your entrypoint, not in `common/`, so they stay put. See
-[`AGENTS.md`](../AGENTS.md) and [adding CI](ci.md).
+It fetches the common boilerplate code from the ref that is pinned in your
+`omnibenchmark.yaml`. Your own method params live in your entrypoint, not in
+`common/`, so they stay put. See [`AGENTS.md`](../AGENTS.md) and [adding CI](ci.md).
 
 ---
 
