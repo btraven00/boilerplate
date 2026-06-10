@@ -196,8 +196,10 @@ omnibenchmark's `main`).
 ### `docs/`
 Documentation aimed at module authors: how to generate a module, how to declare
 its language and stages, how to run validation, and how to take a
-`copier update`. So far this holds `ci.md` (adding the `validate-module` action
-to a module). Doc pages may embed real files verbatim (see *Developer tasks*),
+`copier update`. So far this holds `cli.md` (the schema-driven CLI: types,
+`choices`, and the `_base`/`<interface>`/`.extends` layering) and `ci.md` (adding
+the `validate-module` action to a module). Doc pages may embed real files
+verbatim (see *Developer tasks*),
 so don't hand-edit a fenced block wrapped in `<!-- embed:… -->` markers — edit
 the source file and run `pixi run docs`.
 

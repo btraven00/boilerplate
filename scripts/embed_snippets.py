@@ -33,6 +33,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # blast radius is obvious and it never wanders into .pixi/ or generated output.
 TARGETS = [
     "docs/ci.md",
+    "docs/cli.md",
 ]
 
 EXT_LANG = {
@@ -42,6 +43,7 @@ EXT_LANG = {
     ".py": "python",
     ".toml": "toml",
     ".md": "markdown",
+    ".json": "json",
 }
 
 # <!-- embed:PATH [lang=LANG] --> <fence> BODY <fence> <!-- /embed -->
