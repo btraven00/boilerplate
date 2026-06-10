@@ -48,7 +48,7 @@ suppressPackageStartupMessages(library(jsonlite))
   if (length(f)) return(dirname(normalizePath(f)))
   getwd()
 }
-COMMON_VERSION <- "0.2.0"  # x-release-version — stamped from src/common/VERSION by `pixi run version`
+COMMON_VERSION <- "0.2.1"  # x-release-version — stamped from src/common/VERSION by `pixi run version`
 
 # Works under both layouts: rendered `common/cli.R` (schema is a sibling) and the
 # template's `common/r/cli.R` (schema is one level up).
