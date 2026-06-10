@@ -169,21 +169,15 @@ So the effective CLI accepts:
 --solver  --n_components  --random_seed  (your own, plain argparse)
 ```
 
-## Naming an interface
-
-An interface name is the **entrypoint** your module exposes for a stage (`pca`,
-`knn`) — the stable handle the plan binds you by (`repository.entrypoint:` in
-the benchmark definition). It is *not* the plan's internal stage `id` (those
-carry ordinal prefixes, e.g. `five-pca`). Stage-id, entrypoint, and output
-namespaces are distinct and **mapped, not unified** — so never rename your
-existing flags or outputs just to "match" a stage id.
-
-## Where the files come from
+## Where common files come from
 
 `common/cli.*`, `_base.json`, and each stage `<interface>.json` are vendored
-from the boilerplate / benchmark. Until `ob` can automate, refresh them with the
-boilerplate's `pull.py`, run **from your module root** against a sibling
-checkout of the boilerplate:
+from the boilerplate repo (TODO: insert a footnote saying, in the future they
+can be defined in the benchmark itself). Until `ob` can automate this, you need
+to refresh the common code every time it changeswith a script from the
+boilerplate repo. 
+
+You can sync common code **from your module root** against a checkout of the boilerplate in a sibling directory, like this:
 
 ```sh
 cd my-module && python ../boilerplate/scripts/pull.py
