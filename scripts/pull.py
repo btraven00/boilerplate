@@ -9,8 +9,14 @@ Reads ./omnibenchmark.yaml and pulls, at pinned refs, via shallow+sparse git:
     interfaces/<iface>.json (repo/ref from the matching `template-for` entry),
     overlaying ./common/schema/<iface>.json.
 
-This is the interim distribution mechanism; `ob` will subsume it. Run from a
-module's root: `python pull.py` (or `pixi run pull`). `ref` is a branch or tag.
+This is the interim distribution mechanism; `ob` will subsume it. The script is
+CWD-relative (it reads ./omnibenchmark.yaml and writes ./common), so its own
+location doesn't matter — run it from your **module root** against the
+boilerplate checked out as a sibling repo:
+
+    cd my-module && python ../boilerplate/scripts/pull.py
+
+`ref` is a branch or tag.
 """
 from __future__ import annotations
 

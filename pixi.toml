@@ -36,7 +36,9 @@ version-check = "python scripts/stamp_version.py --check"
 check-interfaces = "python scripts/check_interfaces.py"
 
 # Vendor common code + interface schemas into a module at pinned refs (interim,
-# pre-`ob`). Run from a module root, not here (the boilerplate is the source).
+# pre-`ob`). pull.py is CWD-relative; a module author runs it from THEIR module
+# root via a sibling checkout: `python ../boilerplate/scripts/pull.py`. This task
+# runs it here (boilerplate root), so it's only useful for self-vendoring/testing.
 pull = "python scripts/pull.py"
 
 # Tests for src/common (Python + R).

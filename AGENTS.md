@@ -239,8 +239,15 @@ implements:
 
 ### Vendoring shared code + interfaces (`scripts/pull.py`, interim)
 How the shared code and interface schemas get *into* a module — until `ob` owns
-it. `scripts/pull.py` (`pixi run pull`, run from a **module** root, not here)
-reads that module's `omnibenchmark.yaml` and shallow+sparse-fetches at pinned
+it. `scripts/pull.py` is CWD-relative (reads `./omnibenchmark.yaml`, writes
+`./common`), so it isn't copied into modules; run it **from the module root**
+against the boilerplate checked out as a sibling repo:
+
+```sh
+cd my-module && python ../boilerplate/scripts/pull.py
+```
+
+It reads that module's `omnibenchmark.yaml` and shallow+sparse-fetches at pinned
 refs:
 
 - **`boilerplate:`** `{repo, ref, lang}` → the common engine + schemas into the

@@ -172,10 +172,17 @@ outputs just to "match" a stage id.
 ## Where the files come from
 
 `common/cli.*` and `_base.json` are vendored from the boilerplate; each stage
-`<interface>.json` from the benchmark. Until `ob` owns this, `pixi run pull`
-(from your module root) refreshes them at the ref pinned in your
-`omnibenchmark.yaml`. Your `.extends.json` overlays are yours and stay put. See
-[`AGENTS.md`](../AGENTS.md) and [adding CI](ci.md).
+`<interface>.json` from the benchmark. Until `ob` owns this, refresh them with
+the boilerplate's `pull.py`, run **from your module root** against a sibling
+checkout of the boilerplate:
+
+```sh
+cd my-module && python ../boilerplate/scripts/pull.py
+```
+
+It fetches at the ref pinned in your `omnibenchmark.yaml`. Your `.extends.json`
+overlays are yours and stay put. See [`AGENTS.md`](../AGENTS.md) and
+[adding CI](ci.md).
 
 ---
 
