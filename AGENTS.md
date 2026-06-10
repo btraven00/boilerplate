@@ -87,8 +87,8 @@ Concretely, this means:
 ```
 
 Note for agents: most directories now have content. `src/common/{python,r}/`
-holds the schema-driven CLI engine (`cli.py` / `cli.R`); `src/common/schema/`
-holds one example interface (`embedding.json`); `validators/` holds one copied
+holds the shared CLI helpers (`cli.py` / `cli.R`); `src/common/schema/`
+holds example interfaces (`embedding.json`, `knn.json`); `validators/` holds one copied
 example. These are early/spike-stage — read before assuming a shape.
 
 ### `src/common/{python,r}/` and `src/common/schema/`
@@ -98,13 +98,15 @@ re-rendered cleanly (see *Working in this repo*). Keep the public surface
 (function/CLI names) **identical across languages** so the Python and R
 implementations feel like one contract; keep dependencies light.
 
-The first utility is **schema-driven CLI parsing**. An *interface* — a named,
-versioned CLI contract owned by a benchmark — is defined as data in
-`src/common/schema/<interface>.json`; `cli.py` (stdlib `argparse`) and `cli.R`
-(base R + `jsonlite`, *not* the `argparse` package, which pulls Python) build
-the same parser from it. A module "satisfies" an interface by carrying its
-schema and parsing against it. **Add new shared utilities under the correct
-language directory**, with matching surfaces.
+The first utility is **shared CLI helpers**. An *interface* — a named, versioned
+CLI contract owned by a benchmark — is defined as data in
+`src/common/schema/<interface>.json`. The module author writes their **own**
+`argparse` (Python) / base-R CLI and owns the parser; `cli.py` (stdlib `argparse`)
+and `cli.R` (base R + `jsonlite`, *not* the `argparse` package, which pulls
+Python) just *inject* the shared args — the universal base and the stage's I/O
+contract — onto it. A module "satisfies" an interface by carrying its schema and
+adding it to its parser. **Add new shared utilities under the correct language
+directory**, with matching surfaces.
 
 **Interface naming.** An interface name == the **entrypoint** a module exposes
 for a stage (`pca`, `knn`), which is the stable handle the plan binds a module by
@@ -114,38 +116,52 @@ variants like `embedding-py`/`embedding-r` share one interface). Stage-id,
 entrypoint, and output namespaces are distinct and **mapped, not unified** — so
 never rename a module's existing flags/outputs to "match" a stage id.
 
-**Layering.** An interface is composed from up to three files in `schema/`, each
-contributing args, later layers winning per `flag`:
+**What's shared vs. what's the author's.** Two synced files in `schema/` back the
+helpers; method params are *not* schema-driven — the author hand-writes them:
 
 - `_base.json` — universal args every module gets (`--output_dir`, `--name`);
-  not a stage. Vendored from the boilerplate like the engine.
+  vendored from the boilerplate like the engine. Added by `add_base_args`.
 - `<interface>.json` — the stage's I/O contract (benchmark-owned; reserved,
-  overwrite-on-update).
-- `<interface>.extends.json` — module-local extras/overrides, e.g. method
-  parameters (`--solver`, `--n_components`). **Author-owned**, a *different file*
-  so `pull`/`copier update` never overwrites it; same `flag` as a lower layer
-  overrides it.
+  overwrite-on-update). Added by `add_stage_args(parser, "<interface>")`.
+- method params (`--solver`, `--n_components`, …) — **author-owned**, written as
+  plain `argparse` in the author's own entrypoint, so `pull`/`copier update`
+  never touches them.
 
-`parse_args("pca")` discovers and merges all three by convention — entrypoints
-don't change. A module carrying only `<interface>.json` behaves exactly as
-before, so this is backward-compatible. Files starting with `_` or ending
-`.extends.json` are not stages (auto-pick skips them). An arg may carry an
-optional `choices` list (an enum), validated like `argparse`.
+A schema arg may carry an optional `choices` list (an enum), validated like
+`argparse`. Each schema arg is added `required=True` (a run is reproducible from
+its invocation line).
+
+> **History.** An earlier iteration made `cli.*` a *parser factory*:
+> `parse_args("pca")` built the whole parser from JSON, composed a third
+> `<interface>.extends.json` overlay (per-`flag` override), and auto-picked the
+> sole stage schema — no `argparse` in the entrypoint. It was deliberately
+> simplified to these import-helpers (stakeholder feedback: too much machinery for
+> a bazaar-style template). The richer engine is recoverable from git history if
+> we revisit.
 
 **Import convention.** In a *rendered* module the shared code is the `common`
 package (Copier drops the language segment, leaving the chosen language's files
-plus `schema/`), so entrypoints import it as:
+plus `schema/`), so entrypoints use it as:
 
 ```python
-from common.cli import parse_args     # Python
+import argparse
+from common import cli
+p = argparse.ArgumentParser()
+cli.add_base_args(p); cli.add_stage_args(p, "embedding")   # then your own p.add_argument(...)
+args = p.parse_args()
 ```
 ```r
 source("common/cli.R")                # R (no import namespace; we source())
+specs <- c(base_args(), stage_args("embedding"), list(...))  # your own specs appended
+args <- parse_args(specs)
 ```
 
-The template keeps the `src/common/{python,r}/` split for maintenance; the engine
-locates `schema/` relative to itself, so the same `cli.py`/`cli.R` works whether
-it sits at `common/cli.*` (rendered) or `common/<lang>/cli.*` (template).
+Python mutates the author's parser; R returns arg-specs the author concatenates
+(base R has no parser object) — the analogous idiom per language, under the
+"lean per language" rule. The template keeps the `src/common/{python,r}/` split
+for maintenance; the helpers locate `schema/` relative to themselves, so the same
+`cli.py`/`cli.R` works whether it sits at `common/cli.*` (rendered) or
+`common/<lang>/cli.*` (template).
 
 `src/common/VERSION` versions the shared code as a whole (Python and R move
 together), so a module can report which copy of the scaffolding it carries.
@@ -196,8 +212,8 @@ omnibenchmark's `main`).
 ### `docs/`
 Documentation aimed at module authors: how to generate a module, how to declare
 its language and stages, how to run validation, and how to take a
-`copier update`. So far this holds `cli.md` (the schema-driven CLI: types,
-`choices`, and the `_base`/`<interface>`/`.extends` layering) and `ci.md` (adding
+`copier update`. So far this holds `cli.md` (the shared CLI helpers: types,
+`choices`, and the `add_base_args`/`add_stage_args` injection) and `ci.md` (adding
 the `validate-module` action to a module). Doc pages may embed real files
 verbatim (see *Developer tasks*),
 so don't hand-edit a fenced block wrapped in `<!-- embed:… -->` markers — edit
@@ -251,7 +267,7 @@ It reads that module's `omnibenchmark.yaml` and shallow+sparse-fetches at pinned
 refs:
 
 - **`boilerplate:`** `{repo, ref, lang}` → the common engine + schemas into the
-  module's `common/` package (so `from common.cli import parse_args` works).
+  module's `common/` package (so `from common import cli` works).
 - each **`implements:`** `<label>/<iface>@<ver>` → the benchmark's authoritative
   `interfaces/<iface>.json` (repo/ref from the matching `template-for` entry),
   overlaying `common/schema/`.

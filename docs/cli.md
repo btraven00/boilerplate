@@ -1,32 +1,50 @@
-# The schema-driven CLI
+# The shared CLI helpers
 
-This guide is for **module authors**: how your entrypoints get their
-command-line interface from the shared engine in `common/`, so Python and R
-modules share one contract and you declare the CLI once, as data.
+This guide is for **module authors**: you write your own `argparse` (Python) or
+base-R CLI, and import a couple of helpers from `common/` to inject the *shared*
+parts — the universal base args and your stage's I/O contract — so Python and R
+modules share one contract without you re-typing it.
 
 ## The idea
 
-An entrypoint doesn't hand-roll `argparse`. The flags it accepts are declared
-once, as JSON, in `common/schema/`, and `common/cli.py` / `common/cli.R` build
-the parser from it. Same schema → an identical parser in both languages.
+You own your entrypoint's parser. The flags that are **shared** — the universal
+base args, and the stage's I/O contract owned by the benchmark — are declared once
+as JSON in `common/schema/` and *added onto your parser* by `common/cli`. Your own
+method parameters you add by hand, in plain `argparse`, right next to them — so the
+whole CLI stays visible in your file.
 
 ```python
-from common.cli import parse_args     # Python
-args = parse_args("pca")              # build + parse the "pca" interface
-# args.output_dir, args.name, args.input_h5, args.solver, ...
-```
-```r
-source("common/cli.R")                # R (no import namespace; we source())
-args <- parse_args("pca")
-# args$output_dir, args$name, args$input_h5, args$solver, ...
+import argparse
+from common import cli
+
+p = argparse.ArgumentParser()
+cli.add_base_args(p)                 # --output_dir, --name   (common/schema/_base.json)
+cli.add_stage_args(p, "embedding")   # the stage I/O contract (common/schema/embedding.json)
+# your own method params — plain argparse, fully visible & owned:
+p.add_argument("--solver", choices=["arpack", "randomized"], required=True)
+p.add_argument("--n_components", type=int, required=True)
+args = p.parse_args()
+# args.output_dir, args.name, args.pcas, args.solver, args.n_components
 ```
 
-Pass the interface name. Omit it (`parse_args()`) only when the module carries
-exactly one stage schema.
+R has no parser object (we use base R, not the `argparse` package), so the idiom
+is "assemble the spec list — `common` supplies the shared chunks, you append your
+own — then parse":
+
+```r
+source("common/cli.R")
+specs <- c(base_args(),               # --output_dir, --name
+           stage_args("embedding"),   # the stage I/O contract
+           list(                       # your own method params, fully visible:
+             list(flag = "--solver", type = "string", choices = c("arpack", "randomized")),
+             list(flag = "--n_components", type = "integer")))
+args <- parse_args(specs)
+# args$output_dir, args$name, args$pcas, args$solver, args$n_components
+```
 
 ## A schema
 
-A stage's I/O contract is one file, `common/schema/<interface>.json`:
+A stage's I/O contract is one file, `common/schema/<stage>.json`:
 
 <!-- embed:src/common/schema/embedding.json -->
 ```json
@@ -53,8 +71,8 @@ entry in `args` is one flag:
 | `dest` | no | attribute name (see defaulting below) |
 | `choices` | no | allowed values — an enum |
 
-Every arg is **required** (a run must be reproducible from its invocation line),
-and unknown flags are rejected.
+Every schema-declared arg is **required** (a run must be reproducible from its
+invocation line). Unknown flags are rejected by your parser as usual.
 
 ### Types
 
@@ -76,8 +94,7 @@ Restrict a flag to a fixed set, exactly like `argparse` `choices`:
 { "flag": "--solver", "type": "string", "choices": ["arpack", "randomized"] }
 ```
 
-An out-of-set value is rejected with a clear message **before** your code runs —
-so a method's valid solvers/flavors stay declared as data, not re-checked by hand.
+An out-of-set value is rejected with a clear message **before** your code runs.
 
 ### `dest` — the attribute name
 
@@ -89,16 +106,16 @@ want a tidier name:
 { "flag": "--normalized_selected.h5", "dest": "input_h5", "type": "path" }
 ```
 
-## Layering: `_base` + stage + `.extends`
+## What's shared vs. what's yours
 
-A real interface is composed from up to three files in `common/schema/`, each
-contributing args. **Later layers win per `flag`:**
+Two synced files back the helpers; your method params are not in a schema at all —
+you write them as plain `argparse`.
 
-| file | what it holds | who owns it | on `pull` / update |
+| source | what it holds | who owns it | on `pull` / update |
 |---|---|---|---|
 | `_base.json` | universal args every module gets (`--output_dir`, `--name`) | boilerplate | overwritten |
 | `<interface>.json` | the stage's I/O contract | the benchmark | overwritten |
-| `<interface>.extends.json` | module-local extras / overrides (method params) | **you** | never touched |
+| your `cli.py` / `cli.R` | your method params (`--solver`, …) | **you** | never touched |
 
 `_base.json` (vendored, shipped with the engine):
 
@@ -115,20 +132,9 @@ contributing args. **Later layers win per `flag`:**
 ```
 <!-- /embed -->
 
-`parse_args("pca")` discovers and merges all three by name — your entrypoint code
-doesn't change. A module that carries only `<interface>.json` behaves exactly
-like a single flat schema, so adopting the layers is opt-in.
-
-> **Why a separate `.extends.json` instead of editing `<interface>.json`?**
-> `<interface>.json` (and `_base.json`) are **reserved, overwrite-on-update**
-> files — `pull` (and later `copier update`) rewrite them from upstream. Your
-> method parameters live in `<interface>.extends.json`, a *different file* the
-> update never overwrites. Listing the same `flag` in the overlay **overrides**
-> the lower layer (to narrow `choices`, change `help`, …) without forking the
-> upstream file.
-
-Files starting with `_` or ending `.extends.json` are **not stages**, so the
-single-schema auto-pick (`parse_args()` with no name) ignores them.
+`add_base_args` and `add_stage_args` read these two files; your method parameters
+stay in your own entrypoint, so a `pull` (or later `copier update`) that rewrites
+the synced schema never touches them.
 
 ### Worked example
 
@@ -141,23 +147,24 @@ Stage contract `pca.json` (benchmark-owned — just the stage's I/O):
   ] }
 ```
 
-Your method parameters, `pca.extends.json` (yours to keep and edit):
+Your entrypoint composes the shared args + your own method params:
 
-```json
-{ "interface": "pca",
-  "args": [
-    { "flag": "--solver", "type": "string", "choices": ["arpack", "randomized"] },
-    { "flag": "--n_components", "type": "integer" },
-    { "flag": "--random_seed", "type": "integer" }
-  ] }
+```python
+p = argparse.ArgumentParser()
+cli.add_base_args(p)                 # --output_dir, --name
+cli.add_stage_args(p, "pca")         # --normalized_selected.h5  (-> args.input_h5)
+p.add_argument("--solver", choices=["arpack", "randomized"], required=True)
+p.add_argument("--n_components", type=int, required=True)
+p.add_argument("--random_seed", type=int, required=True)
+args = p.parse_args()
 ```
 
-Merged, `parse_args("pca")` accepts:
+So the effective CLI accepts:
 
 ```
---output_dir  --name                     (from _base.json)
---normalized_selected.h5                 (from pca.json)
---solver  --n_components  --random_seed  (from pca.extends.json)
+--output_dir  --name                     (from _base.json, via add_base_args)
+--normalized_selected.h5                 (from pca.json,  via add_stage_args)
+--solver  --n_components  --random_seed  (your own, plain argparse)
 ```
 
 ## Naming an interface
@@ -171,18 +178,18 @@ outputs just to "match" a stage id.
 
 ## Where the files come from
 
-`common/cli.*` and `_base.json` are vendored from the boilerplate; each stage
-`<interface>.json` from the benchmark. Until `ob` owns this, refresh them with
-the boilerplate's `pull.py`, run **from your module root** against a sibling
-checkout of the boilerplate:
+`common/cli.*`, `_base.json`, and each stage `<interface>.json` are vendored from
+the boilerplate / benchmark. Until `ob` owns this, refresh them with the
+boilerplate's `pull.py`, run **from your module root** against a sibling checkout
+of the boilerplate:
 
 ```sh
 cd my-module && python ../boilerplate/scripts/pull.py
 ```
 
-It fetches at the ref pinned in your `omnibenchmark.yaml`. Your `.extends.json`
-overlays are yours and stay put. See [`AGENTS.md`](../AGENTS.md) and
-[adding CI](ci.md).
+It fetches at the ref pinned in your `omnibenchmark.yaml`. Your own method params
+live in your entrypoint, not in `common/`, so they stay put. See
+[`AGENTS.md`](../AGENTS.md) and [adding CI](ci.md).
 
 ---
 

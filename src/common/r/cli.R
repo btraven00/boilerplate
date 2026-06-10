@@ -1,36 +1,35 @@
-# Schema-driven CLI parsing for omnibenchmark module entrypoints (R).
+# Shared CLI helpers for omnibenchmark module entrypoints (R).
 #
 # Reserved, overwrite-on-update path (src/common/r/) — see AGENTS.md. Mirrors
-# src/common/python/cli.py: the CLI is defined as data in
-# src/common/schema/<interface>.json and built into a parser the same way in
-# both languages, so Python and R entrypoints share one contract.
+# src/common/python/cli.py: the module author writes their OWN CLI and owns the
+# parsing; this file just supplies the shared, synced contract (universal base
+# args + the stage's I/O contract) as arg-specs, so Python and R entrypoints share
+# one contract. Base R has no parser object, so the idiom is "assemble the spec
+# list — common supplies the shared chunks, you append your own — then parse":
+#
+#   source("common/cli.R")              # R has no import namespace; we source()
+#   specs <- c(base_args(),             # --output_dir, --name (schema/_base.json)
+#              stage_args("embedding"), # the stage I/O contract (schema/embedding.json)
+#              list(                     # the author's own method params, fully visible:
+#                list(flag = "--solver", type = "string", choices = c("arpack", "randomized")),
+#                list(flag = "--n_components", type = "integer")))
+#   args <- parse_args(specs)
+#   # args$output_dir, args$name, args$pcas, args$solver, args$n_components
 #
 # Dependencies: jsonlite only (to read the schema). The arg parsing itself is
 # base R — deliberately NOT the `argparse` package, which wraps Python's argparse
 # (a heavy cross-language dep that fights "lean per language", AGENTS.md).
 #
-# An *interface* is a named, versioned CLI contract owned by a benchmark; a
-# module "satisfies" it by carrying its schema and parsing against it. Schema:
-#   { "interface": "embedding", "version": "0.1.0",
-#     "benchmark": "omni-scrna/split-stages-plan",
-#     "args": [ {"flag":"--name","type":"string","help":"...","dest":"<opt>"}, ... ] }
+# An arg-spec is a list(flag=, type=, dest=<opt>, choices=<opt>, help=<opt>).
+# Conventions for schema-declared args: each is required; dest defaults to the
+# flag with dots/dashes -> "_" unless overridden. Types: path|string|integer|number.
+# An optional "choices" vector restricts accepted values (an enum).
 #
-# Conventions: every arg is required; unknown flags rejected; dest defaults to
-# the flag with dots/dashes -> "_" unless overridden. Types: path|string|integer|number.
-# An optional "choices" list restricts accepted values (an enum).
-#
-# Layering — an interface is composed from up to three files in schema/, each
-# contributing args, later layers winning per flag:
-#   _base.json               universal args every module gets (--output_dir, --name)
-#   <interface>.json         the stage's I/O contract (benchmark-owned)
-#   <interface>.extends.json module-local extras/overrides (author-owned)
-# parse_args("pca") merges all three by convention; a module carrying only
-# <interface>.json behaves as before. "_*" and "*.extends.json" are not stages.
-#
-# Usage in an entrypoint (in a rendered module the shared code is `common/`):
-#   source("common/cli.R")              # R has no import namespace; we source()
-#   args <- parse_args("embedding")     # or parse_args() if the module has one schema
-#   # args$output_dir, args$name, args$pcas, args$clusters_truth
+# Note (history): an earlier iteration was a parser FACTORY — it built the whole
+# parser from JSON, composed a third <interface>.extends.json overlay, and
+# auto-picked the sole schema (parse_args("embedding")). That was deliberately
+# simplified to these import-helpers; the richer version is recoverable from git
+# history if it's ever wanted back.
 
 suppressPackageStartupMessages(library(jsonlite))
 
@@ -48,7 +47,7 @@ suppressPackageStartupMessages(library(jsonlite))
   if (length(f)) return(dirname(normalizePath(f)))
   getwd()
 }
-COMMON_VERSION <- "0.2.1"  # x-release-version — stamped from src/common/VERSION by `pixi run version`
+COMMON_VERSION <- "0.3.0"  # x-release-version — stamped from src/common/VERSION by `pixi run version`
 
 # Works under both layouts: rendered `common/cli.R` (schema is a sibling) and the
 # template's `common/r/cli.R` (schema is one level up).
@@ -61,6 +60,7 @@ COMMON_VERSION <- "0.2.1"  # x-release-version — stamped from src/common/VERSI
   file.path(here, "schema")
 }
 .SCHEMA_DIR <- .find_schema_dir()
+.BASE_SCHEMA <- "_base"  # universal args (--output_dir, --name)
 
 # Version of the src/common shared code, so a module can report which copy of the
 # boilerplate scaffolding it carries. Stamped from src/common/VERSION (single
@@ -72,74 +72,37 @@ common_version <- function() COMMON_VERSION
 
 .default_dest <- function(flag) gsub("[.-]", "_", sub("^--", "", flag))
 
+`%||%` <- function(a, b) if (is.null(a) || is.na(a)) b else a
+
 .coerce <- function(val, type) {
   switch(.r_types[[type]] %||% "character",
          integer = as.integer(val),
          double  = as.numeric(val),
          as.character(val))
 }
-`%||%` <- function(a, b) if (is.null(a) || is.na(a)) b else a
 
-.BASE_SCHEMA <- "_base"             # universal args, merged first; not a stage
-.EXTENDS_SUFFIX <- ".extends.json"  # module-local overlay for <interface>
-
-# A stage schema is a plain <interface>.json — not the base ("_*") nor an overlay.
-.is_stage_schema <- function(name)
-  !startsWith(name, "_") && !endsWith(name, .EXTENDS_SUFFIX)
-
-.read_schema <- function(path) {
-  if (!file.exists(path)) return(NULL)
-  jsonlite::fromJSON(path, simplifyDataFrame = FALSE)
+.read_args <- function(path) {
+  if (!file.exists(path)) stop(sprintf("schema not found: %s", path))
+  jsonlite::fromJSON(path, simplifyDataFrame = FALSE)$args
 }
 
-# Overlay `child` args onto `parent`: same flag overrides (keeping position), a
-# new flag is appended.
-.merge_args <- function(parent, child) {
-  flags <- vapply(parent, function(a) a$flag, character(1))
-  for (a in child) {
-    i <- match(a$flag, flags)
-    if (is.na(i)) { parent <- c(parent, list(a)); flags <- c(flags, a$flag) }
-    else parent[[i]] <- a
-  }
-  parent
-}
+# Shared arg-specs from schema/_base.json (universal base args).
+base_args <- function(schema_dir = .SCHEMA_DIR)
+  .read_args(file.path(schema_dir, paste0(.BASE_SCHEMA, ".json")))
 
-# Compose an interface: _base (universal) -> <interface> (stage contract) ->
-# <interface>.extends (module-local overrides), later layers winning per flag.
-load_interface <- function(interface = NULL, schema_dir = .SCHEMA_DIR) {
-  if (is.null(interface)) {
-    found <- list.files(schema_dir, pattern = "\\.json$")
-    stages <- found[vapply(found, .is_stage_schema, logical(1))]
-    if (length(stages) != 1L)
-      stop(sprintf("specify an interface; found %d stage schemas in %s",
-                   length(stages), schema_dir))
-    interface <- sub("\\.json$", "", stages)
-  }
-  stage_path <- file.path(schema_dir, paste0(interface, ".json"))
-  if (!file.exists(stage_path)) stop(sprintf("interface schema not found: %s", stage_path))
-  spec <- jsonlite::fromJSON(stage_path, simplifyDataFrame = FALSE)
+# Shared arg-specs from schema/<interface>.json (the stage's I/O contract).
+stage_args <- function(interface, schema_dir = .SCHEMA_DIR)
+  .read_args(file.path(schema_dir, paste0(interface, ".json")))
 
-  args <- list()
-  base <- .read_schema(file.path(schema_dir, paste0(.BASE_SCHEMA, ".json")))
-  if (!is.null(base)) args <- .merge_args(args, base$args)
-  args <- .merge_args(args, spec$args)
-  ext <- .read_schema(file.path(schema_dir, paste0(interface, .EXTENDS_SUFFIX)))
-  if (!is.null(ext)) args <- .merge_args(args, ext$args)
-
-  spec$args <- args
-  spec
-}
-
-parse_args <- function(interface = NULL,
-                       argv = commandArgs(trailingOnly = TRUE),
-                       schema_dir = .SCHEMA_DIR) {
-  schema <- load_interface(interface, schema_dir)
-
-  specs <- list()  # keyed by flag sans leading "--"
-  for (arg in schema$args) {
+# Parse argv against an assembled list of arg-specs (shared chunks from
+# base_args()/stage_args() plus the author's own). Every spec is required;
+# unknown flags are rejected; values are type-coerced and choice-checked.
+parse_args <- function(specs, argv = commandArgs(trailingOnly = TRUE)) {
+  by_key <- list()  # keyed by flag sans leading "--"
+  for (arg in specs) {
     key <- sub("^--", "", arg$flag)
     dest <- if (!is.null(arg$dest)) arg$dest else .default_dest(arg$flag)
-    specs[[key]] <- list(type = arg$type, dest = dest, choices = arg$choices)
+    by_key[[key]] <- list(type = arg$type, dest = dest, choices = arg$choices)
   }
 
   values <- list()
@@ -148,9 +111,9 @@ parse_args <- function(interface = NULL,
     tok <- argv[[i]]
     if (!startsWith(tok, "--")) stop(sprintf("unexpected argument: %s", tok))
     key <- substring(tok, 3L)
-    if (is.null(specs[[key]])) stop(sprintf("unknown argument: --%s", key))
+    if (is.null(by_key[[key]])) stop(sprintf("unknown argument: --%s", key))
     if (i + 1L > length(argv)) stop(sprintf("--%s requires a value", key))
-    sp <- specs[[key]]
+    sp <- by_key[[key]]
     val <- .coerce(argv[[i + 1L]], sp$type)
     if (!is.null(sp$choices) && !(val %in% unlist(sp$choices)))
       stop(sprintf("--%s must be one of: %s", key,
@@ -159,7 +122,7 @@ parse_args <- function(interface = NULL,
     i <- i + 2L
   }
 
-  missing <- Filter(function(k) is.null(values[[specs[[k]]$dest]]), names(specs))
+  missing <- Filter(function(k) is.null(values[[by_key[[k]]$dest]]), names(by_key))
   if (length(missing) > 0L)
     stop(sprintf("missing required argument(s): %s",
                  paste0("--", missing, collapse = ", ")))

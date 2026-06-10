@@ -4,7 +4,7 @@
 Reads ./omnibenchmark.yaml and pulls, at pinned refs, via shallow+sparse git:
 
   - `boilerplate:` {repo, ref, lang} -> the common engine + schemas, into
-    ./common/ (the import package: `from common.cli import parse_args`).
+    ./common/ (the import package: `from common import cli`).
   - each `implements: <label>/<iface>@<ver>` -> the benchmark's authoritative
     interfaces/<iface>.json (repo/ref from the matching `template-for` entry),
     overlaying ./common/schema/<iface>.json.
