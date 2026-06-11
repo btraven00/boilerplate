@@ -16,8 +16,9 @@ template-for:
     ref: main              # pin: tag/branch to vendor interfaces from
 
 # Interfaces this module implements, as <benchmark-label>/<interface>@<version>.
-# The interface is defined as data in src/common/schema/<interface>.json.
-# (Illustrative here: this repo is a template that also self-validates; the
-# example schema is src/common/schema/embedding.json.)
+# The interface is defined as data in the benchmark's schema/<interface>.json
+# (a module vendors the ones it implements into src/common/schema/). This repo is
+# a template carrying no source schemas, so its self-check resolves the example
+# against tests/fixtures/schema/ (see the check-interfaces task in pixi.toml).
 implements:
   - split-stages/embedding@0.1.0

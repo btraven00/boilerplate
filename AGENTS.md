@@ -81,15 +81,17 @@ Concretely, this means:
 │   └── common/          # shared code copied into every module
 │       ├── VERSION      # version of the shared code; travels with the copy
 │       ├── python/      # rendered for Python modules
-│       ├── r/           # rendered for R modules
-│       └── schema/      # JSON interface specs (one CLI contract, two languages)
+│       └── r/           # rendered for R modules
+│                        # (schema/ exists only in a module, vendored from the benchmark)
 └── validators/          # I/O contract checks, routed by stage/output
 ```
 
 Note for agents: most directories now have content. `src/common/{python,r}/`
-holds the shared CLI helpers (`cli.py` / `cli.R`); `src/common/schema/`
-holds example interfaces (`embedding.json`, `knn.json`); `validators/` holds one copied
-example. These are early/spike-stage — read before assuming a shape.
+holds the shared CLI helpers (`cli.py` / `cli.R`); the schemas they read are
+benchmark-owned (the plan's `schema/`), vendored into a module's
+`src/common/schema/` — the boilerplate keeps only example copies in
+`tests/fixtures/schema/`. `validators/` holds one copied example. These are
+early/spike-stage — read before assuming a shape.
 
 ### `src/common/{python,r}/` and `src/common/schema/`
 Shared, language-split utilities copied into a module — a **reserved,
@@ -99,12 +101,14 @@ re-rendered cleanly (see *Working in this repo*). Keep the public surface
 implementations feel like one contract; keep dependencies light.
 
 The first utility is **shared CLI helpers**. An *interface* — a named, versioned
-CLI contract owned by a benchmark — is defined as data in
-`src/common/schema/<interface>.json`. The module author writes their **own**
-`argparse` (Python) / base-R CLI and owns the parser; `cli.py` (stdlib `argparse`)
-and `cli.R` (base R + `jsonlite`, *not* the `argparse` package, which pulls
-Python) just *inject* the shared args — the universal base and the stage's I/O
-contract — onto it. A module "satisfies" an interface by carrying its schema and
+CLI contract owned by a benchmark — is defined as data in the benchmark's own
+`schema/<interface>.json` and vendored into a module's `src/common/schema/`. The
+boilerplate carries none itself (example copies live in `tests/fixtures/schema/`
+for the tests and docs). The module author writes their **own**
+`argparse` (Python) / `argparser` (R) CLI and owns the parser; `cli.py` (stdlib
+`argparse`) and `cli.R` (the `argparser` CRAN package + `jsonlite` — `argparser`
+is pure R, *not* the `argparse` package, which pulls Python) just *inject* the
+shared args — the universal base and the stage's I/O contract — onto it. A module "satisfies" an interface by carrying its schema and
 adding it to its parser. **Add new shared utilities under the correct language
 directory**, with matching surfaces.
 
@@ -120,7 +124,8 @@ never rename a module's existing flags/outputs to "match" a stage id.
 helpers; method params are *not* schema-driven — the author hand-writes them:
 
 - `_base.json` — universal args every module gets (`--output_dir`, `--name`);
-  vendored from the boilerplate like the engine. Added by `add_base_args`.
+  benchmark-owned like the stage schemas, vendored from the benchmark's `schema/`.
+  Added by `add_base_args`.
 - `<interface>.json` — the stage's I/O contract (benchmark-owned; reserved,
   overwrite-on-update). Added by `add_stage_args(parser, "<interface>")`.
 - method params (`--solver`, `--n_components`, …) — **author-owned**, written as
@@ -139,29 +144,34 @@ its invocation line).
 > a bazaar-style template). The richer engine is recoverable from git history if
 > we revisit.
 
-**Import convention.** In a *rendered* module the shared code is the `common`
-package (Copier drops the language segment, leaving the chosen language's files
-plus `schema/`), so entrypoints use it as:
+**Import convention.** In a *rendered* module the shared code lives at
+`src/common/` (the pull script drops the language segment, leaving the chosen
+language's files plus `schema/`), so entrypoints use it as:
 
 ```python
 import argparse
-from common import cli
+from common import cli                 # `src/` on the path; `common` is the package
 p = argparse.ArgumentParser()
 cli.add_base_args(p); cli.add_stage_args(p, "embedding")   # then your own p.add_argument(...)
 args = p.parse_args()
 ```
 ```r
-source("common/cli.R")                # R (no import namespace; we source())
-specs <- c(base_args(), stage_args("embedding"), list(...))  # your own specs appended
-args <- parse_args(specs)
+source("src/common/cli.R")            # R (no import namespace; we source())
+p <- arg_parser("module")
+p <- add_base_args(p); p <- add_stage_args(p, "embedding")   # then your own add_argument(...)
+args <- parse_args(p)
 ```
 
-Python mutates the author's parser; R returns arg-specs the author concatenates
-(base R has no parser object) — the analogous idiom per language, under the
-"lean per language" rule. The template keeps the `src/common/{python,r}/` split
-for maintenance; the helpers locate `schema/` relative to themselves, so the same
-`cli.py`/`cli.R` works whether it sits at `common/cli.*` (rendered) or
-`common/<lang>/cli.*` (template).
+Both languages mutate the author's parser (Python `argparse`, R `argparser` — pure
+R, not the Python-wrapping `argparse` package), then parse. The one asymmetry:
+`argparser` has no `choices`, so R adds an `add_choice(p, flag, values)` helper for
+author enums (and `parse_args` enforces required/choices/dest, which `argparser`
+can't) — Python gets those from `argparse` natively. The template keeps the `src/common/{python,r}/` split
+for maintenance; vendoring flattens the chosen language to `src/common/cli.*`
+with `schema/` alongside. Python's `cli.py` locates `schema/` relative to itself
+(`__file__`), so it works at either path; R's `cli.R` has no `__file__`, so it
+defaults `SCHEMA_DIR` to `src/common/schema` (the vendored layout, which the
+template's own tests also match) and takes a `schema_dir =` override.
 
 `src/common/VERSION` versions the shared code as a whole (Python and R move
 together), so a module can report which copy of the scaffolding it carries.
@@ -170,8 +180,10 @@ literals — `__version__` in `cli.py`, `COMMON_VERSION` in `cli.R` (lines tagge
 `x-release-version`) — which `common_version()` returns. Stamping (rather than
 reading the file at runtime) means the vendored copy carries the version with no
 file dependency. **Bump VERSION on any change under `src/common/`, then run
-`pixi run version`**; `version-check` gates drift in CI. This is distinct from an
-*interface* version, which lives per-schema in `src/common/schema/`.
+`pixi run version`**; `version-check` gates drift in CI. This versions only the
+**engine**. A **stage schema** is versioned independently — each carries its own
+`version` field in the benchmark's `schema/`; there is no separate bundle
+version.
 
 ### `validators/`
 I/O contract checks, routed `validators/<STAGE_NAME>/<OUTPUT_NAME>/validate.<ext>`
@@ -213,10 +225,10 @@ omnibenchmark's `main`).
 Documentation aimed at module authors: how to generate a module, how to declare
 its language and stages, how to run validation, and how to take a
 `copier update`. So far this holds `cli.md` (module-author guide: wiring an
-entrypoint's CLI with the `add_base_args`/`add_stage_args` helpers), `ci.md`
-(adding the `validate-module` action to a module), and `stage-interfaces.md`
-(the schema *format* — types, `choices`, `dest`, base/stage/method ownership —
-aimed at benchmark authors and boilerplate contributors, not module authors).
+entrypoint's CLI with the `add_base_args`/`add_stage_args` helpers) and `ci.md`
+(adding the `validate-module` action to a module). The stage-schema *format* —
+types, `choices`, `dest`, base/stage/method ownership, aimed at benchmark authors
+— now lives with the schemas, in the plan's `docs/stage-schemas.md`.
 Doc pages may embed real files verbatim (see *Developer tasks*), so don't
 hand-edit a fenced block wrapped in `<!-- embed:… -->` markers — edit the source
 file and run `pixi run docs`.
@@ -258,7 +270,7 @@ implements:
 ### Vendoring shared code + interfaces (`scripts/pull.py`, interim)
 How the shared code and interface schemas get *into* a module — until `ob` owns
 it. `scripts/pull.py` is CWD-relative (reads `./omnibenchmark.yaml`, writes
-`./common`), so it isn't copied into modules; run it **from the module root**
+`./src/common`), so it isn't copied into modules; run it **from the module root**
 against the boilerplate checked out as a sibling repo:
 
 ```sh
@@ -268,11 +280,12 @@ cd my-module && python ../boilerplate/scripts/pull.py
 It reads that module's `omnibenchmark.yaml` and shallow+sparse-fetches at pinned
 refs:
 
-- **`boilerplate:`** `{repo, ref, lang}` → the common engine + schemas into the
-  module's `common/` package (so `from common import cli` works).
-- each **`implements:`** `<label>/<iface>@<ver>` → the benchmark's authoritative
-  `interfaces/<iface>.json` (repo/ref from the matching `template-for` entry),
-  overlaying `common/schema/`.
+- **`boilerplate:`** `{repo, ref, lang}` → the common engine (`cli.*`) into the
+  module's `src/common/` package (with `src/` on the path, `from common import
+  cli` works).
+- the benchmark's schemas → `src/common/schema/`: `_base.json` (universal) plus,
+  for each **`implements:`** `<label>/<iface>@<ver>`, the benchmark's authoritative
+  `schema/<iface>.json` (repo/ref from the matching `template-for` entry).
 
 Vendored files are committed in the module (offline-runnable; `check-interfaces`
 needs no network) — `pull` just refreshes them. A consuming module declares:
@@ -289,9 +302,9 @@ implements:
 ```
 
 This is deliberately lightweight and easy to delete once `ob` subsumes it (no
-submodule residue). Precondition for the interface pull: the benchmark must
-publish schemas at `interfaces/<iface>.json` (not the case yet — `pull` notes
-and skips). Discovery is bidirectional: a plan can point at its boilerplate, and
+submodule residue). Precondition for the schema pull: the benchmark must
+publish them at `schema/<iface>.json` (the plan now does; if one is missing
+`pull` notes and skips it). Discovery is bidirectional: a plan can point at its boilerplate, and
 the boilerplate's `template-for` points back at the plan.
 
 ### `scripts/` and `pixi.toml`

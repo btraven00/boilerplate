@@ -11,6 +11,10 @@ sys.path.insert(0, str(ROOT / "src" / "common" / "python"))
 
 import cli  # noqa: E402
 
+# Example schemas stand in for the set a real module vendors from the plan's
+# schema/ — see tests/fixtures/schema/README.md.
+SCHEMA = ROOT / "tests" / "fixtures" / "schema"
+
 # An entrypoint-style parser: shared base + stage args, then the author's own.
 EMB = ["--output_dir", "o", "--name", "n",
        "--pcas.tsv", "p", "--rawdata.clusters_truth", "t"]
@@ -18,8 +22,8 @@ EMB = ["--output_dir", "o", "--name", "n",
 
 def _embedding_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser()
-    cli.add_base_args(p)
-    cli.add_stage_args(p, "embedding")
+    cli.add_base_args(p, schema_dir=SCHEMA)
+    cli.add_stage_args(p, "embedding", schema_dir=SCHEMA)
     return p
 
 
@@ -46,7 +50,11 @@ class TestCli(unittest.TestCase):
 
     def test_unknown_interface_errors(self):
         with self.assertRaises(SystemExit):
-            cli.add_stage_args(argparse.ArgumentParser(), "does-not-exist")
+            cli.add_stage_args(argparse.ArgumentParser(), "does-not-exist", schema_dir=SCHEMA)
+
+    def test_missing_schema_dir_errors(self):
+        with self.assertRaises(SystemExit):
+            cli.add_base_args(argparse.ArgumentParser(), schema_dir=Path("no/such/dir"))
 
     def test_common_version(self):
         v = cli.common_version()
@@ -56,7 +64,7 @@ class TestCli(unittest.TestCase):
     # ── helpers add args to the author's own parser ───────────────────────────
     def test_add_base_args_adds_universal(self):
         p = argparse.ArgumentParser()
-        cli.add_base_args(p)
+        cli.add_base_args(p, schema_dir=SCHEMA)
         a = p.parse_args(["--output_dir", "o", "--name", "n"])
         self.assertEqual(str(a.output_dir), "o")
         self.assertEqual(a.name, "n")

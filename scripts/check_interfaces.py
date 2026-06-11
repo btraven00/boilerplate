@@ -3,14 +3,20 @@
 
 For each `implements: <label>/<interface>@<version>`:
   - <label> must be defined in `template-for` (by `name`),
-  - src/common/schema/<interface>.json must exist with a matching `interface`
+  - <schema-dir>/<interface>.json must exist with a matching `interface`
     and `version`.
+
+Schemas are read from `--schema-dir` (default `src/common/schema`, where a real
+module's vendored copies live). The boilerplate itself carries no source schemas
+— they now live in the plan's `schema/` — so its own CI points this at the
+example fixtures in `tests/fixtures/schema/`.
 
 Exits non-zero on any mismatch — a CI gate that keeps a module's declared
 interfaces and the schemas it carries in sync. Lives only in the boilerplate.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
@@ -22,7 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 _IMPL = re.compile(r"^(?P<label>[^/]+)/(?P<iface>[^@]+)@(?P<ver>.+)$")
 
 
-def check(root: Path) -> list[str]:
+def check(root: Path, schema_dir: Path | None = None) -> list[str]:
     """Return a list of human-readable problems (empty == consistent)."""
     errors: list[str] = []
     data = yaml.safe_load((root / "omnibenchmark.yaml").read_text()) or {}
@@ -32,7 +38,7 @@ def check(root: Path) -> list[str]:
         for e in (data.get("template-for") or [])
         if isinstance(e, dict) and "name" in e
     }
-    schema_dir = root / "src" / "common" / "schema"
+    schema_dir = schema_dir or root / "src" / "common" / "schema"
 
     for item in data.get("implements") or []:
         m = _IMPL.match(str(item))
@@ -56,7 +62,14 @@ def check(root: Path) -> list[str]:
 
 
 def main() -> int:
-    errors = check(ROOT)
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--schema-dir", type=Path, default=None,
+                    help="dir holding <interface>.json (default src/common/schema)")
+    args = ap.parse_args()
+    schema_dir = args.schema_dir
+    if schema_dir is not None and not schema_dir.is_absolute():
+        schema_dir = ROOT / schema_dir
+    errors = check(ROOT, schema_dir)
     for e in errors:
         print(f"error: {e}", file=sys.stderr)
     if errors:
