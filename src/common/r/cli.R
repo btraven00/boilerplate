@@ -1,130 +1,120 @@
 # Shared CLI helpers for omnibenchmark module entrypoints (R).
 #
 # Reserved, overwrite-on-update path (src/common/r/) — see AGENTS.md. Mirrors
-# src/common/python/cli.py: the module author writes their OWN CLI and owns the
-# parsing; this file just supplies the shared, synced contract (universal base
-# args + the stage's I/O contract) as arg-specs, so Python and R entrypoints share
-# one contract. Base R has no parser object, so the idiom is "assemble the spec
-# list — common supplies the shared chunks, you append your own — then parse":
+# src/common/python/cli.py: the author owns the parser; these helpers inject the
+# shared, synced contract (universal base args + the stage's I/O contract) onto
+# it, and the author adds their own method params with argparser directly:
 #
-#   source("common/cli.R")              # R has no import namespace; we source()
-#   specs <- c(base_args(),             # --output_dir, --name (schema/_base.json)
-#              stage_args("embedding"), # the stage I/O contract (schema/embedding.json)
-#              list(                     # the author's own method params, fully visible:
-#                list(flag = "--solver", type = "string", choices = c("arpack", "randomized")),
-#                list(flag = "--n_components", type = "integer")))
-#   args <- parse_args(specs)
-#   # args$output_dir, args$name, args$pcas, args$solver, args$n_components
+#   cli <- new.env(); source("src/common/cli.R", local = cli)
+#   p <- arg_parser("PCA module")
+#   p <- cli$add_base_args(p)                       # --output_dir, --name
+#   p <- cli$add_stage_args(p, "embedding")          # the stage I/O contract
+#   p <- add_argument(p, "--n_components", type = "integer", help = "PCs")  # your own
+#   p <- cli$add_choice(p, "--solver", c("arpack", "randomized"))           # your own list of closed choices
+#   args <- cli$parse_args(p)
+#   # args$output_dir, args$name, args$pcas, args$n_components, args$solver
 #
-# Dependencies: jsonlite only (to read the schema). The arg parsing itself is
-# base R — deliberately NOT the `argparse` package, which wraps Python's argparse
-# (a heavy cross-language dep that fights "lean per language", AGENTS.md).
+# We use the argparser CRAN package (pure R — unlike the argparse package, which
+# wraps Python). argparser gives tokenizing, types, unknown-flag rejection and
+# --help; cli$parse_args adds what argparser lacks for our contract — every arg
+# is required, `choices` enums, a tidier `dest` name — for the flags these helpers
+# register. argparser has no `choices`, so `add_choice` lets an author register an
+# enum and still have it enforced.
 #
-# An arg-spec is a list(flag=, type=, dest=<opt>, choices=<opt>, help=<opt>).
-# Conventions for schema-declared args: each is required; dest defaults to the
-# flag with dots/dashes -> "_" unless overridden. Types: path|string|integer|number.
-# An optional "choices" vector restricts accepted values (an enum).
-#
-# Note (history): an earlier iteration was a parser FACTORY — it built the whole
-# parser from JSON, composed a third <interface>.extends.json overlay, and
-# auto-picked the sole schema (parse_args("embedding")). That was deliberately
-# simplified to these import-helpers; the richer version is recoverable from git
-# history if it's ever wanted back.
+# Schema arg-spec (in JSON): {flag, type, dest?, choices?, help?};
+# types: path|string|integer|number.
 
-suppressPackageStartupMessages(library(jsonlite))
+# Attached so an entrypoint can call arg_parser()/add_argument(); we qualify internally.
+suppressPackageStartupMessages(library(argparser))
 
-# Resolve this file's directory at SOURCE time (so the schema dir is known later,
-# after source() returns and the frame is gone). Handles Rscript --file and source().
-.this_dir <- function() {
-  # When this file is source()d (the normal case), the sourced path is the right
-  # anchor — prefer it over --file (which points at the outer script).
-  for (i in rev(seq_len(sys.nframe()))) {
-    of <- sys.frame(i)$ofile
-    if (!is.null(of)) return(dirname(normalizePath(of)))
-  }
-  a <- commandArgs(trailingOnly = FALSE)
-  f <- sub("^--file=", "", grep("^--file=", a, value = TRUE))
-  if (length(f)) return(dirname(normalizePath(f)))
-  getwd()
-}
-COMMON_VERSION <- "0.3.0"  # x-release-version — stamped from src/common/VERSION by `pixi run version`
+COMMON_VERSION <- "0.1.0"  # x-release-version — stamped from src/common/VERSION by `pixi run version`
 
-# Works under both layouts: rendered `common/cli.R` (schema is a sibling) and the
-# template's `common/r/cli.R` (schema is one level up).
-.find_schema_dir <- function() {
-  here <- .this_dir()
-  for (base in c(here, dirname(here))) {
-    cand <- file.path(base, "schema")
-    if (dir.exists(cand)) return(cand)
-  }
-  file.path(here, "schema")
-}
-.SCHEMA_DIR <- .find_schema_dir()
-.BASE_SCHEMA <- "_base"  # universal args (--output_dir, --name)
+# Where the synced schema JSON lives (vendored layout: src/common/schema/ at the
+# module root). Override per call with `schema_dir =`, or set SCHEMA_DIR once after
+# sourcing.
+SCHEMA_DIR <- "src/common/schema"
+.BASE_SCHEMA <- "_base"
 
-# Version of the src/common shared code, so a module can report which copy of the
-# boilerplate scaffolding it carries. Stamped from src/common/VERSION (single
-# source of truth) — bump VERSION and run `pixi run version`.
+# Version of the shared engine, so a module can report which copy it carries.
 common_version <- function() COMMON_VERSION
 
-.r_types <- c(path = "character", string = "character",
-              integer = "integer", number = "double")
+`%||%` <- function(a, b) if (is.null(a)) b else a
 
+# our schema type -> argparser type (path/string and anything else -> character)
+.atype <- function(type) switch(type %||% "string",
+                                integer = "integer", number = "numeric", "character")
+
+# tidy attribute name for a flag: strip --, dots/dashes -> _ (schema `dest` wins);
+# mirrors cli.py's _default_dest.
 .default_dest <- function(flag) gsub("[.-]", "_", sub("^--", "", flag))
 
-`%||%` <- function(a, b) if (is.null(a) || is.na(a)) b else a
-
-.coerce <- function(val, type) {
-  switch(.r_types[[type]] %||% "character",
-         integer = as.integer(val),
-         double  = as.numeric(val),
-         as.character(val))
-}
+# argparser's own slot name for a flag: strip --, dashes -> _ (dots kept).
+.argparser_key <- function(flag) gsub("-", "_", sub("^--", "", flag))
 
 .read_args <- function(path) {
-  if (!file.exists(path)) stop(sprintf("schema not found: %s", path))
+  if (!file.exists(path)) stop(sprintf("schema not found: %s", path), call. = FALSE)
   jsonlite::fromJSON(path, simplifyDataFrame = FALSE)$args
 }
 
-# Shared arg-specs from schema/_base.json (universal base args).
-base_args <- function(schema_dir = .SCHEMA_DIR)
-  .read_args(file.path(schema_dir, paste0(.BASE_SCHEMA, ".json")))
+# Add one flag to the parser and register how parse_args should treat it (choices,
+# dest). Shared by the schema args and author enums (add_choice); the `rules`
+# attribute survives later add_argument() calls.
+.add_arg <- function(p, flag, type = "string", help = "", dest = NULL, choices = NULL) {
+  p <- argparser::add_argument(p, flag, help = help, type = .atype(type))
+  rules <- attr(p, "rules") %||% list()
+  rules[[.argparser_key(flag)]] <- list(dest = dest, choices = choices)
+  attr(p, "rules") <- rules
+  p
+}
 
-# Shared arg-specs from schema/<interface>.json (the stage's I/O contract).
-stage_args <- function(interface, schema_dir = .SCHEMA_DIR)
-  .read_args(file.path(schema_dir, paste0(interface, ".json")))
+.add_specs <- function(p, specs) {
+  for (spec in specs)
+    p <- .add_arg(p, spec$flag, type = spec$type, help = spec$help %||% "",
+                  dest = spec$dest %||% .default_dest(spec$flag),
+                  choices = unlist(spec$choices))
+  p
+}
 
-# Parse argv against an assembled list of arg-specs (shared chunks from
-# base_args()/stage_args() plus the author's own). Every spec is required;
-# unknown flags are rejected; values are type-coerced and choice-checked.
-parse_args <- function(specs, argv = commandArgs(trailingOnly = TRUE)) {
-  by_key <- list()  # keyed by flag sans leading "--"
-  for (arg in specs) {
-    key <- sub("^--", "", arg$flag)
-    dest <- if (!is.null(arg$dest)) arg$dest else .default_dest(arg$flag)
-    by_key[[key]] <- list(type = arg$type, dest = dest, choices = arg$choices)
-  }
+# Inject the universal base args (--output_dir, --name) onto the author's parser.
+add_base_args <- function(p, schema_dir = SCHEMA_DIR)
+  .add_specs(p, .read_args(file.path(schema_dir, paste0(.BASE_SCHEMA, ".json"))))
 
+# Inject a stage's I/O contract (schema/<interface>.json) onto the author's parser.
+add_stage_args <- function(p, interface, schema_dir = SCHEMA_DIR)
+  .add_specs(p, .read_args(file.path(schema_dir, paste0(interface, ".json"))))
+
+# Author helper for an enum param (argparser has no `choices`): add the flag and
+# register its allowed values so cli$parse_args enforces them — the same path the
+# schema args take.
+add_choice <- function(p, flag, choices, type = "string", help = "")
+  .add_arg(p, flag, type = type, help = help, choices = choices)
+
+# Parse argv. argparser does tokenizing, typing, unknown-flag rejection and --help;
+# we enforce required (every arg must be supplied) + choices, and map registered
+# flags onto their `dest`.
+parse_args <- function(p, argv = commandArgs(trailingOnly = TRUE)) {
+  parsed <- argparser::parse_args(p, argv)
+  rules <- attr(p, "rules") %||% list()
+
+  # argparser has no concept of "required" args, so we must check for missing values
   values <- list()
-  i <- 1L
-  while (i <= length(argv)) {
-    tok <- argv[[i]]
-    if (!startsWith(tok, "--")) stop(sprintf("unexpected argument: %s", tok))
-    key <- substring(tok, 3L)
-    if (is.null(by_key[[key]])) stop(sprintf("unknown argument: --%s", key))
-    if (i + 1L > length(argv)) stop(sprintf("--%s requires a value", key))
-    sp <- by_key[[key]]
-    val <- .coerce(argv[[i + 1L]], sp$type)
-    if (!is.null(sp$choices) && !(val %in% unlist(sp$choices)))
-      stop(sprintf("--%s must be one of: %s", key,
-                   paste(unlist(sp$choices), collapse = ", ")))
-    values[[sp$dest]] <- val
-    i <- i + 2L
-  }
+  missing <- character(0)
+  for (key in setdiff(names(parsed), c("", "help", "opts"))) {  # skip argparser's own slots
+    val <- parsed[[key]]
+    if (is.na(val)) {
+      missing <- c(missing, key)
+      next
+    }
+    rule <- rules[[key]]
 
-  missing <- Filter(function(k) is.null(values[[by_key[[k]]$dest]]), names(by_key))
-  if (length(missing) > 0L)
-    stop(sprintf("missing required argument(s): %s",
-                 paste0("--", missing, collapse = ", ")))
+    # enforce choices (if any), since argparser does not enforce them natively
+    if (!is.null(rule$choices) && !(val %in% rule$choices))
+      stop(sprintf("--%s must be one of: %s", key, paste(rule$choices, collapse = ", ")),
+           call. = FALSE)
+    values[[rule$dest %||% key]] <- val
+  }
+  if (length(missing))
+    stop(sprintf("missing required argument(s): %s", paste0("--", missing, collapse = ", ")),
+         call. = FALSE)
   values
 }

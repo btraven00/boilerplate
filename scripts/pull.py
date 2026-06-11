@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
-"""Vendor shared code + interface schemas into a module (interim, pre-`ob`).
+"""Vendor the shared engine + stage schemas into a module (interim, pre-`ob`).
 
 Reads ./omnibenchmark.yaml and pulls, at pinned refs, via shallow+sparse git:
 
-  - `boilerplate:` {repo, ref, lang} -> the common engine + schemas, into
-    ./common/ (the import package: `from common import cli`).
-  - each `implements: <label>/<iface>@<ver>` -> the benchmark's authoritative
-    interfaces/<iface>.json (repo/ref from the matching `template-for` entry),
-    overlaying ./common/schema/<iface>.json.
+  - `boilerplate:` {repo, ref, lang} -> the common engine (cli.*), into
+    ./src/common/ (the import package: with `src/` on the path, `from common
+    import cli`).
+  - the benchmark's schemas, into ./src/common/schema/: `_base.json` (universal)
+    plus each `implements: <label>/<iface>@<ver>` -> the benchmark's authoritative
+    schema/<iface>.json (repo/ref from the matching `template-for` entry).
 
-It also records the *resolved* source commit in ./common/.provenance.json — an
-exact sync witness, independent of `common/VERSION` (which only moves on a bump,
-so it can't tell apart two states sharing a version). Commit it: it's the record
-of what this module carries, especially when `ref` is a moving branch.
+It also records the *resolved* sources in ./src/common/.provenance.json — the
+engine commit and each benchmark the schemas came from (repo/ref/commit) — an
+exact sync witness, independent of `src/common/VERSION` (which only moves on a
+bump). Commit it: it's the record of what this module carries, especially when a
+`ref` is a moving branch.
 
 This is the interim distribution mechanism; `ob` will subsume it. The script is
-CWD-relative (it reads ./omnibenchmark.yaml and writes ./common), so its own
+CWD-relative (it reads ./omnibenchmark.yaml and writes ./src/common), so its own
 location doesn't matter — run it from your **module root** against the
 boilerplate checked out as a sibling repo:
 
@@ -66,94 +68,124 @@ def _git_head(repo_dir: Path) -> str:
     return out.stdout.strip()
 
 
-def _write_provenance(common: Path, *, repo: str, ref: str, lang: str,
-                      commit: str, version: str | None) -> None:
-    """Stamp what was vendored, so the module witnesses its sync state exactly —
-    even when `ref` is a moving branch and VERSION hasn't been bumped."""
+def _write_provenance(common: Path, engine: dict | None, schemas: list[dict]) -> None:
+    """Witness exactly what was vendored and from where: the engine source and each
+    benchmark the schemas came from (repo / ref / resolved commit). Independent of
+    the engine VERSION (which only moves on a bump). Commit it."""
     common.mkdir(parents=True, exist_ok=True)
     prov = {
-        "repo": repo,
-        "ref": ref,
-        "commit": commit,
-        "version": version,
-        "lang": lang,
+        "engine": engine,
+        "schemas": schemas,
         "fetched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     (common / ".provenance.json").write_text(json.dumps(prov, indent=2) + "\n")
 
 
-def _vendor_common(bp: dict, common: Path) -> tuple[str, str | None]:
+def _vendor_common(bp: dict, common: Path) -> dict:
+    """Copy the engine (cli.* + VERSION) from the boilerplate. Returns the engine
+    source record for provenance."""
     lang = bp.get("lang", "python")
     ref = bp.get("ref", "main")
     src = _sparse_fetch(bp["repo"], ref, ["src/common"])
     try:
+        # Only the engine comes from the boilerplate now; schemas (incl. _base)
+        # come from the benchmark — see _vendor_schemas.
         _copy_glob(src / "src" / "common" / lang, common)
-        _copy_glob(src / "src" / "common" / "schema", common / "schema")
         version_file = src / "src" / "common" / "VERSION"
         version = version_file.read_text().strip() if version_file.exists() else None
         if version is not None:
             shutil.copy2(version_file, common / "VERSION")
         commit = _git_head(src)
-        _write_provenance(common, repo=bp["repo"], ref=ref, lang=lang,
-                          commit=commit, version=version)
     finally:
         shutil.rmtree(src, ignore_errors=True)
-    return commit, version
+    return {"repo": bp["repo"], "ref": ref, "commit": commit,
+            "version": version, "lang": lang}
 
 
-def _vendor_interfaces(cfg: dict, common: Path) -> tuple[int, int]:
+def _fetch_schemas_from(bench: dict, names: list[str],
+                        schema_dir: Path) -> tuple[list[str], str | None]:
+    """Fetch schema/<name>.json for each name from one benchmark in a single sparse
+    checkout. Returns (names actually vendored, the benchmark's resolved commit)."""
+    ref = bench.get("ref", "main")
+    # Sparse-checkout the schema/ dir (cone mode takes directories, not files),
+    # then copy the specific files we want.
+    try:
+        src = _sparse_fetch(bench["repo"], ref, ["schema"])
+    except subprocess.CalledProcessError:
+        print(f"skip {bench['repo']}@{ref}: fetch failed", file=sys.stderr)
+        return [], None
+    try:
+        schema_dir.mkdir(parents=True, exist_ok=True)
+        got = []
+        for n in names:
+            f = src / "schema" / f"{n}.json"
+            if f.exists():
+                shutil.copy2(f, schema_dir / f"{n}.json")
+                print(f"vendored src/common/schema/{n}.json from {bench['repo']}@{ref}")
+                got.append(n)
+            else:
+                print(f"note: schema/{n}.json not published in {bench['repo']} yet",
+                      file=sys.stderr)
+        return got, _git_head(src)
+    finally:
+        shutil.rmtree(src, ignore_errors=True)
+
+
+def _vendor_schemas(cfg: dict, common: Path) -> tuple[int, int, list[dict]]:
+    """Vendor _base + each implemented schema from the benchmark(s) in template-for.
+    Returns (vendored count, pending count, per-benchmark provenance records)."""
     benches = {
         e["name"]: e
         for e in (cfg.get("template-for") or [])
         if isinstance(e, dict) and "name" in e
     }
-    vendored = pending = 0
+    schema_dir = common / "schema"
+
+    # What to fetch from which benchmark: _base from the first template-for (it's
+    # the same everywhere), plus each implemented schema from its label's benchmark.
+    wanted: dict[str, set[str]] = {}
+    if benches:
+        wanted[next(iter(benches))] = {"_base"}
+    unresolved = 0
     for item in cfg.get("implements") or []:
         m = _IMPL.match(str(item))
         if not m:
             continue
-        bench = benches.get(m["label"])
-        if not bench:
+        if m["label"] not in benches:
             print(f"skip {item}: no template-for label '{m['label']}'", file=sys.stderr)
-            pending += 1
+            unresolved += 1
             continue
-        iface, ref = m["iface"], bench.get("ref", "main")
-        rel = f"interfaces/{iface}.json"
-        try:
-            src = _sparse_fetch(bench["repo"], ref, [rel])
-        except subprocess.CalledProcessError:
-            print(f"skip {item}: fetch from {bench['repo']}@{ref} failed", file=sys.stderr)
-            pending += 1
-            continue
-        try:
-            if (src / rel).exists():
-                shutil.copy2(src / rel, common / "schema" / f"{iface}.json")
-                print(f"vendored common/schema/{iface}.json from {bench['repo']}@{ref}")
-                vendored += 1
-            else:
-                print(f"note {item}: {rel} not published in {bench['repo']} yet",
-                      file=sys.stderr)
-                pending += 1
-        finally:
-            shutil.rmtree(src, ignore_errors=True)
-    return vendored, pending
+        wanted.setdefault(m["label"], set()).add(m["iface"])
+
+    vendored = missing = 0
+    records: list[dict] = []
+    for label, names in wanted.items():
+        bench = benches[label]
+        got, commit = _fetch_schemas_from(bench, sorted(names), schema_dir)
+        vendored += len(got)
+        missing += len(names) - len(got)
+        if got:
+            records.append({"benchmark": label, "repo": bench["repo"],
+                            "ref": bench.get("ref", "main"), "commit": commit,
+                            "files": got})
+    return vendored, unresolved + missing, records
 
 
 def main() -> int:
     cfg = yaml.safe_load((Path.cwd() / "omnibenchmark.yaml").read_text()) or {}
-    common = Path.cwd() / "common"
+    common = Path.cwd() / "src" / "common"
     bp = cfg.get("boilerplate")
-    synced = _vendor_common(bp, common) if bp else None
-    vendored, pending = _vendor_interfaces(cfg, common)
+    engine = _vendor_common(bp, common) if bp else None
+    vendored, pending, schemas = _vendor_schemas(cfg, common)
+    _write_provenance(common, engine, schemas)
 
-    if synced:
-        commit, version = synced
-        msg = (f"OK: synced common/ <- {bp['repo']}@{bp.get('ref', 'main')} "
-               f"{commit[:12]} (v{version})")
+    if engine:
+        msg = (f"OK: synced src/common/ <- {engine['repo']}@{engine['ref']} "
+               f"{engine['commit'][:12]} (v{engine['version']})")
     else:
         msg = "OK: nothing to sync (no `boilerplate:` in omnibenchmark.yaml)"
     if vendored or pending:
-        msg += f"; interfaces: {vendored} vendored, {pending} pending"
+        msg += f"; schemas: {vendored} vendored, {pending} pending"
     print(msg)
     return 0
 

@@ -1,21 +1,21 @@
 # Shared CLI helpers
 
-> **Defining a stage's CLI contract, or maintaining `src/common/schema/`?** See
-> [Stage interfaces](stage-interfaces.md). This page is about *using* the shared
-> helpers from a module entrypoint.
+> **Defining a stage's CLI contract (a benchmark author)?** See the plan's
+> [Stage schemas](https://github.com/omni-scrna/split-stages-plan/blob/main/docs/stage-schemas.md).
+> This page is about *using* the shared helpers from a module entrypoint.
 
 This guide is for **module authors**: you write your own `argparse` (Python) or
-base-R CLI, and import a couple of helpers from `common/` to inject the *shared*
-parts that are provided by the benchmark (the universal base args and your
-stage's I/O contract), so Python and R modules share the same definition of the
-CLI arguments.
+base-R CLI, and import a couple of helpers from `src/common/` to inject the
+*shared* parts that are provided by the benchmark (the universal base args and
+your stage's I/O contract), so Python and R modules share the same definition of
+the CLI arguments.
 
 ## The idea
 
 You own your entrypoint's parser. The flags that are **shared** (the universal
 base args, and the stage's I/O contract owned by the benchmark) are declared
-once as JSON in the boilerplate repo's `common/schema/` and *added onto your
-parser* by using `common/cli`. Your own any method parameters you add by hand,
+once as JSON in the benchmark's `schema/` (vendored into your module's
+`src/common/schema/`) and *added onto your parser* by using `src/common/cli`. Your own any method parameters you add by hand,
 for python that's plain `argparse`. In this way the whole CLI for an entrypoint
 stays visible in your file.
 
@@ -24,8 +24,8 @@ import argparse
 from common import cli
 
 p = argparse.ArgumentParser()
-cli.add_base_args(p)                 # --output_dir, --name   (common/schema/_base.json)
-cli.add_stage_args(p, "embedding")   # the stage I/O contract (common/schema/embedding.json)
+cli.add_base_args(p)                 # --output_dir, --name   (src/common/schema/_base.json)
+cli.add_stage_args(p, "embedding")   # the stage I/O contract (src/common/schema/embedding.json)
 # your own method params — plain argparse, fully visible & owned:
 p.add_argument("--solver", choices=["arpack", "randomized"], required=True)
 p.add_argument("--n_components", type=int, required=True)
@@ -33,19 +33,36 @@ args = p.parse_args()
 # args.output_dir, args.name, args.pcas, args.solver, args.n_components
 ```
 
-For R we use base R (TODO: is this fine?), so the idiom is "assemble the spec
-list — `common` supplies the shared chunks, you append your own — then parse":
+R works the same way, with the [`argparser`](https://cran.r-project.org/package=argparser)
+package (pure R): the helpers add the shared args onto your parser, and you add
+your own with `argparser` directly. Load into a dedicated environment so the
+helpers don't land in your global scope:
 
 ```r
-source("common/cli.R")
-specs <- c(base_args(),               # --output_dir, --name
-           stage_args("embedding"),   # the stage I/O contract
-           list(                       # your own method params, fully visible:
-             list(flag = "--solver", type = "string", choices = c("arpack", "randomized")),
-             list(flag = "--n_components", type = "integer")))
-args <- parse_args(specs)
-# args$output_dir, args$name, args$pcas, args$solver, args$n_components
+cli <- new.env()
+source("src/common/cli.R", local = cli)    # namespaced: helpers stay inside `cli`
+p <- arg_parser("PCA module")
+p <- cli$add_base_args(p)                   # --output_dir, --name
+p <- cli$add_stage_args(p, "embedding")     # the stage I/O contract
+# your own method params — argparser directly (its add_argument requires `help`):
+p <- add_argument(p, "--n_components", type = "integer", help = "number of PCs")
+p <- cli$add_choice(p, "--solver", c("arpack", "randomized"))  # an enum we enforce
+args <- cli$parse_args(p)
+# args$output_dir, args$name, args$pcas, args$n_components, args$solver
 ```
+
+Loading into `cli` (via `source(..., local = cli)`, or equally `sys.source(...,
+envir = cli)`) keeps every helper inside that environment — call them as
+`cli$add_base_args()` — so nothing collides with your own globals. Plain
+`source("src/common/cli.R")` into the global scope works too. The helpers find the
+shared schema at `src/common/schema/` (relative to your module root, where `ob`
+runs entrypoints); if yours lives elsewhere, pass `schema_dir =` or set
+`cli$SCHEMA_DIR` once after sourcing.
+
+`argparser` has no `choices`, so for an enum method param use `cli$add_choice`
+(above) rather than a plain `add_argument` — that's the one R-only helper, and it
+makes `cli$parse_args` enforce the allowed set the way the schema's own enums are
+enforced.
 
 You don't write the base or stage flags — `add_base_args`/`add_stage_args` bring
 in whatever the boilerplate and the benchmark declared. A stage flag can arrive
@@ -85,11 +102,18 @@ So the effective CLI accepts:
 
 ## Where common files come from
 
-`common/cli.*`, `_base.json`, and each stage `<interface>.json` are vendored
-from the boilerplate repo (TODO: insert a footnote saying, in the future they
-can be defined in the benchmark itself). Until `ob` can automate this, you need
-to refresh the common code every time it changes with a script from the
-boilerplate repo.
+> **Note on paths.** After vendoring, these live under `src/common/` in your
+> module — `src/common/cli.R`, `src/common/schema/_base.json`, etc. — which is
+> what your entrypoint sources, and it mirrors the boilerplate repo's own
+> `src/common/`. The one difference: the boilerplate keeps a per-language source
+> layout (`src/common/r/cli.R`, `src/common/python/cli.py`), and `pull.py`
+> flattens the chosen language's `src/common/<lang>/` down to `src/common/` when
+> it vendors (the schema sits alongside at `src/common/schema/` either way).
+
+`src/common/cli.*` (the engine) is vendored from the boilerplate repo;
+`_base.json` and each stage `<interface>.json` are vendored from the benchmark's
+own `schema/` directory. Until `ob` can automate this, you refresh both with one
+script from the boilerplate repo whenever they change.
 
 You can sync common code **from your module root** against a checkout of the boilerplate in a sibling directory, like this:
 
@@ -99,4 +123,4 @@ cd my-module && python ../boilerplate/scripts/pull.py
 
 It fetches the common boilerplate code from the ref that is pinned in your
 `omnibenchmark.yaml`. Your own method params live in your entrypoint, not in
-`common/`, so they stay put. See [`AGENTS.md`](../AGENTS.md) and [adding CI](ci.md).
+`src/common/`, so they stay put. See [`AGENTS.md`](../AGENTS.md) and [adding CI](ci.md).

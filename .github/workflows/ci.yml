@@ -21,8 +21,12 @@ jobs:
         with:
           manifest-path: pixi.toml
       # docs-sync + ruff + mypy + Python/R tests for src/common. Run `pixi run
-      # check` locally to reproduce.
+      # check` locally to reproduce. (Kept offline; the drift check below needs
+      # network, so it's a separate step.)
       - run: pixi run check
+      # Fail if the schema fixtures have drifted from the plan's published
+      # schema/. No-op until the plan publishes schema/ on the pinned ref.
+      - run: pixi run refresh-fixtures-check
 
   validate-module:
     name: Self-validates as a module
