@@ -78,6 +78,26 @@ common_version <- function() COMMON_VERSION
 # Inject the universal base args (--output_dir, --name) onto the author's parser.
 add_base_args <- function(p, schema_dir = SCHEMA_DIR)
   .add_specs(p, .read_args(file.path(schema_dir, paste0(.BASE_SCHEMA, ".json"))))
+<<<<<<< HEAD
+
+# Inject a stage's I/O contract (schema/<interface>.json) onto the author's parser.
+add_stage_args <- function(p, interface, schema_dir = SCHEMA_DIR)
+  .add_specs(p, .read_args(file.path(schema_dir, paste0(interface, ".json"))))
+
+# Author helper for an enum param (argparser has no `choices`): add the flag and
+# register its allowed values so cli$parse_args enforces them — the same path the
+# schema args take.
+add_choice <- function(p, flag, choices, type = "string", help = "")
+  .add_arg(p, flag, type = type, help = help, choices = choices)
+
+# Parse argv. argparser does tokenizing, typing, unknown-flag rejection and --help;
+# we enforce required (every arg must be supplied) + choices, and map registered
+# flags onto their `dest`.
+parse_args <- function(p, argv = commandArgs(trailingOnly = TRUE)) {
+  parsed <- argparser::parse_args(p, argv)
+  rules <- attr(p, "rules") %||% list()
+=======
+>>>>>>> feat/schemas-to-plan
 
 # Inject a stage's I/O contract (schema/<interface>.json) onto the author's parser.
 add_stage_args <- function(p, interface, schema_dir = SCHEMA_DIR)
@@ -96,6 +116,7 @@ parse_args <- function(p, argv = commandArgs(trailingOnly = TRUE)) {
   parsed <- argparser::parse_args(p, argv)
   rules <- attr(p, "rules") %||% list()
 
+  # argparser has no concept of "required" args, so we must check for missing values
   values <- list()
   missing <- character(0)
   for (key in setdiff(names(parsed), c("", "help", "opts"))) {  # skip argparser's own slots
@@ -105,6 +126,11 @@ parse_args <- function(p, argv = commandArgs(trailingOnly = TRUE)) {
       next
     }
     rule <- rules[[key]]
+<<<<<<< HEAD
+=======
+
+    # enforce choices (if any), since argparser does not enforce them natively
+>>>>>>> feat/schemas-to-plan
     if (!is.null(rule$choices) && !(val %in% rule$choices))
       stop(sprintf("--%s must be one of: %s", key, paste(rule$choices, collapse = ", ")),
            call. = FALSE)
