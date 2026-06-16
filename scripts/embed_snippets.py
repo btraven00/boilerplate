@@ -34,7 +34,6 @@ ROOT = Path(__file__).resolve().parent.parent
 TARGETS = [
     "docs/ci.md",
     "docs/cli.md",
-    "docs/stage-interfaces.md",
 ]
 
 EXT_LANG = {
