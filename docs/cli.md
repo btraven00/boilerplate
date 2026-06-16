@@ -13,7 +13,7 @@ the CLI arguments, and you can update definitions easily if the benchmark change
 ## The idea
 
 You own your entrypoint's parser. The flags that are **shared** (the base args, and the stage's I/O contract)
-are declared as JSON in the benchmark's plan `schema/` folder (vendored into
+are declared as JSON in the benchmark's plan `schema/` folder (copied into
 your module's `src/common/schema/`) and *added onto your parser* by using
 `src/common/cli`. Your own any method parameters you add by hand, for python
 that's `argparse` and for R `argparser`. 
@@ -103,7 +103,7 @@ So the effective CLI accepts:
 ## Where common files come from
 
 You don't hand-write `src/common/`. The engine (`cli.R` / `cli.py`) and the
-schema JSON it reads (`src/common/schema/`) are **vendored** into your module and
+schema JSON it reads (`src/common/schema/`) are **copied** into your module and
 refreshed with one script, pointed at your module (or run from inside it):
 
 ```sh
@@ -115,5 +115,5 @@ This fetches the engine from the boilerplate and the schemas from the benchmark,
 at the refs pinned in your `omnibenchmark.yaml`. Your own method params live in
 your entrypoint, not in `src/common/`, so they stay put across pulls. The full
 workflow —what to pin, what to commit, when to re-run— is in
-[getting the shared code into your module](vendoring.md); see also
+[getting the shared code into your module](common-code.md); see also
 [`AGENTS.md`](../AGENTS.md) and [adding CI](ci.md).

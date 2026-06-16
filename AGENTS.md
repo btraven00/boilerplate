@@ -290,7 +290,19 @@ refs:
   `schema/<iface>.json` (repo/ref from the matching `template-for` entry).
 
 Vendored files are committed in the module (offline-runnable; `check-interfaces`
-needs no network) — `pull` just refreshes them. A consuming module declares:
+needs no network) — `pull` just refreshes them. To take an upstream change, bump
+the `ref` in `omnibenchmark.yaml` (when moving to a new pin), re-run `pull`, and
+commit the refresh.
+
+`pull` also writes `src/common/.provenance.json`, recording the *resolved* sources
+it fetched from — the engine commit, and each benchmark's repo/ref/commit. This is
+an exact sync witness, independent of `src/common/VERSION` (which only moves on a
+deliberate bump), so it's the record of what a module actually carries —
+especially when a `ref` is a moving branch. It's committed alongside the vendored
+files. (Author-facing docs deliberately omit this; it's reference for maintainers
+and for debugging a module's sync state.)
+
+A consuming module declares:
 
 ```yaml
 boilerplate:

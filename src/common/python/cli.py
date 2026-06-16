@@ -62,7 +62,7 @@ from pathlib import Path
 __version__ = "0.1.0"  # x-release-version — stamped from src/common/VERSION by `pixi run version`
 
 def _find_schema_dir() -> Path:
-    # Works under both layouts: vendored `src/common/cli.py` (schema is a sibling)
+    # Works under both layouts: the copied-in `src/common/cli.py` (schema is a sibling)
     # and the template's `src/common/python/cli.py` (schema is one level up).
     here = Path(__file__).resolve().parent
     for base in (here, here.parent):

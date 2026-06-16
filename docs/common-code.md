@@ -1,7 +1,8 @@
 # Getting the shared code into your module
 
-For **module authors**: `src/common/` is a **reserved, vendored path** — you
-don't hand-write it. A script copies in two things, at the refs you pin, so Python
+For **module authors**: `src/common/` is a **reserved, copied-in path** — your
+module's local copy of shared code, which you don't hand-write. A script copies in
+two things, at the refs you pin, so Python
 and R modules share one contract (your own method params stay in your entrypoint —
 see [cli.md](cli.md)):
 

@@ -15,14 +15,14 @@
 #   # args$output_dir, args$name, args$pcas, args$n_components, args$solver
 #
 # Getting these files in place: this engine (src/common/cli.R) and the schema JSON
-# it reads (src/common/schema/) are *vendored* into your module, not hand-written.
+# it reads (src/common/schema/) are *copied* into your module, not hand-written.
 # Run the pull step once to fetch them at the refs pinned in your
 # omnibenchmark.yaml, and re-run it whenever they change upstream:
 #
 #   python boilerplate/scripts/pull.py path/to/module   # or, from the module root:
 #   cd my-module && python ../boilerplate/scripts/pull.py
 #
-# See docs/vendoring.md for the full workflow and docs/cli.md for using the helpers.
+# See docs/common-code.md for the full workflow and docs/cli.md for using the helpers.
 #
 # We use the argparser CRAN package (pure R — unlike the argparse package, which
 # wraps Python). argparser gives tokenizing, types, unknown-flag rejection and
@@ -39,7 +39,7 @@ suppressPackageStartupMessages(library(argparser))
 
 COMMON_VERSION <- "0.1.0"  # x-release-version — stamped from src/common/VERSION by `pixi run version`
 
-# Where the synced schema JSON lives (vendored layout: src/common/schema/ at the
+# Where the synced schema JSON lives (copied-in layout: src/common/schema/ at the
 # module root). Override per call with `schema_dir =`, or set SCHEMA_DIR once after
 # sourcing.
 SCHEMA_DIR <- "src/common/schema"
