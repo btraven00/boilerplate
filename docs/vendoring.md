@@ -44,11 +44,8 @@ pull = "python ../boilerplate/scripts/pull.py"
 
 ## Commit it, re-run on change
 
-The vendored files (plus `src/common/.provenance.json`, the resolved-sources
-witness) are **committed in your module** — it runs offline and CI needs no
-network. Re-run `pull.py` whenever the engine or a schema changes upstream (bump
-the `ref` first if moving to a new pin), then commit the refresh. If a benchmark
-hasn't published a schema at `schema/<iface>.json`, `pull.py` notes it and skips.
+Re-run `pull.py` whenever the boilerplate or the plan schemas changes upstream.
+If a benchmark has not published a schema at `schema/<iface>.json`, the `pull.py` script notes it and skips.
 
 See [`AGENTS.md`](../AGENTS.md) for rationale, [cli.md](cli.md) for the helpers,
 [ci.md](ci.md) for CI.
