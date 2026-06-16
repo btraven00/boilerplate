@@ -102,25 +102,18 @@ So the effective CLI accepts:
 
 ## Where common files come from
 
-> **Note on paths.** After vendoring, these live under `src/common/` in your
-> module — `src/common/cli.R`, `src/common/schema/_base.json`, etc. — which is
-> what your entrypoint sources, and it mirrors the boilerplate repo's own
-> `src/common/`. The one difference: the boilerplate keeps a per-language source
-> layout (`src/common/r/cli.R`, `src/common/python/cli.py`), and `pull.py`
-> flattens the chosen language's `src/common/<lang>/` down to `src/common/` when
-> it vendors (the schema sits alongside at `src/common/schema/` either way).
-
-`src/common/cli.*` (the engine) is vendored from the boilerplate repo;
-`_base.json` and each stage `<interface>.json` are vendored from the benchmark's
-own `schema/` directory. Until `ob` can automate this, you refresh both with one
-script from the boilerplate repo whenever they change.
-
-You can sync common code **from your module root** against a checkout of the boilerplate in a sibling directory, like this:
+You don't hand-write `src/common/`. The engine (`cli.R` / `cli.py`) and the
+schema JSON it reads (`src/common/schema/`) are **vendored** into your module and
+refreshed with one script, pointed at your module (or run from inside it):
 
 ```sh
+python boilerplate/scripts/pull.py path/to/module   # or, from the module root:
 cd my-module && python ../boilerplate/scripts/pull.py
 ```
 
-It fetches the common boilerplate code from the ref that is pinned in your
-`omnibenchmark.yaml`. Your own method params live in your entrypoint, not in
-`src/common/`, so they stay put. See [`AGENTS.md`](../AGENTS.md) and [adding CI](ci.md).
+This fetches the engine from the boilerplate and the schemas from the benchmark,
+at the refs pinned in your `omnibenchmark.yaml`. Your own method params live in
+your entrypoint, not in `src/common/`, so they stay put across pulls. The full
+workflow —what to pin, what to commit, when to re-run— is in
+[getting the shared code into your module](vendoring.md); see also
+[`AGENTS.md`](../AGENTS.md) and [adding CI](ci.md).

@@ -16,11 +16,12 @@ exact sync witness, independent of `src/common/VERSION` (which only moves on a
 bump). Commit it: it's the record of what this module carries, especially when a
 `ref` is a moving branch.
 
-This is the interim distribution mechanism; `ob` will subsume it. The script is
-CWD-relative (it reads ./omnibenchmark.yaml and writes ./src/common), so its own
-location doesn't matter — run it from your **module root** against the
-boilerplate checked out as a sibling repo:
+This is the interim distribution mechanism; `ob` will subsume it. It takes the
+module root as an optional argument (default: the current directory) and reads
+`<root>/omnibenchmark.yaml` / writes `<root>/src/common`, so its own location
+doesn't matter. Point it at a module, or run it from inside one:
 
+    python boilerplate/scripts/pull.py path/to/module   # or, from the module root:
     cd my-module && python ../boilerplate/scripts/pull.py
 
 `ref` is a branch or tag.
@@ -172,8 +173,9 @@ def _vendor_schemas(cfg: dict, common: Path) -> tuple[int, int, list[dict]]:
 
 
 def main() -> int:
-    cfg = yaml.safe_load((Path.cwd() / "omnibenchmark.yaml").read_text()) or {}
-    common = Path.cwd() / "src" / "common"
+    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
+    cfg = yaml.safe_load((root / "omnibenchmark.yaml").read_text()) or {}
+    common = root / "src" / "common"
     bp = cfg.get("boilerplate")
     engine = _vendor_common(bp, common) if bp else None
     vendored, pending, schemas = _vendor_schemas(cfg, common)

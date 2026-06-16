@@ -14,6 +14,16 @@
 #   args <- cli$parse_args(p)
 #   # args$output_dir, args$name, args$pcas, args$n_components, args$solver
 #
+# Getting these files in place: this engine (src/common/cli.R) and the schema JSON
+# it reads (src/common/schema/) are *vendored* into your module, not hand-written.
+# Run the pull step once to fetch them at the refs pinned in your
+# omnibenchmark.yaml, and re-run it whenever they change upstream:
+#
+#   python boilerplate/scripts/pull.py path/to/module   # or, from the module root:
+#   cd my-module && python ../boilerplate/scripts/pull.py
+#
+# See docs/vendoring.md for the full workflow and docs/cli.md for using the helpers.
+#
 # We use the argparser CRAN package (pure R — unlike the argparse package, which
 # wraps Python). argparser gives tokenizing, types, unknown-flag rejection and
 # --help; cli$parse_args adds what argparser lacks for our contract — every arg
@@ -78,26 +88,6 @@ common_version <- function() COMMON_VERSION
 # Inject the universal base args (--output_dir, --name) onto the author's parser.
 add_base_args <- function(p, schema_dir = SCHEMA_DIR)
   .add_specs(p, .read_args(file.path(schema_dir, paste0(.BASE_SCHEMA, ".json"))))
-<<<<<<< HEAD
-
-# Inject a stage's I/O contract (schema/<interface>.json) onto the author's parser.
-add_stage_args <- function(p, interface, schema_dir = SCHEMA_DIR)
-  .add_specs(p, .read_args(file.path(schema_dir, paste0(interface, ".json"))))
-
-# Author helper for an enum param (argparser has no `choices`): add the flag and
-# register its allowed values so cli$parse_args enforces them — the same path the
-# schema args take.
-add_choice <- function(p, flag, choices, type = "string", help = "")
-  .add_arg(p, flag, type = type, help = help, choices = choices)
-
-# Parse argv. argparser does tokenizing, typing, unknown-flag rejection and --help;
-# we enforce required (every arg must be supplied) + choices, and map registered
-# flags onto their `dest`.
-parse_args <- function(p, argv = commandArgs(trailingOnly = TRUE)) {
-  parsed <- argparser::parse_args(p, argv)
-  rules <- attr(p, "rules") %||% list()
-=======
->>>>>>> feat/schemas-to-plan
 
 # Inject a stage's I/O contract (schema/<interface>.json) onto the author's parser.
 add_stage_args <- function(p, interface, schema_dir = SCHEMA_DIR)
@@ -126,11 +116,8 @@ parse_args <- function(p, argv = commandArgs(trailingOnly = TRUE)) {
       next
     }
     rule <- rules[[key]]
-<<<<<<< HEAD
-=======
 
     # enforce choices (if any), since argparser does not enforce them natively
->>>>>>> feat/schemas-to-plan
     if (!is.null(rule$choices) && !(val %in% rule$choices))
       stop(sprintf("--%s must be one of: %s", key, paste(rule$choices, collapse = ", ")),
            call. = FALSE)

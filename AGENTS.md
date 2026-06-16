@@ -269,11 +269,13 @@ implements:
 
 ### Vendoring shared code + interfaces (`scripts/pull.py`, interim)
 How the shared code and interface schemas get *into* a module — until `ob` owns
-it. `scripts/pull.py` is CWD-relative (reads `./omnibenchmark.yaml`, writes
-`./src/common`), so it isn't copied into modules; run it **from the module root**
-against the boilerplate checked out as a sibling repo:
+it. `scripts/pull.py` takes the module root as an optional argument (default: the
+current directory) — it reads `<root>/omnibenchmark.yaml` and writes
+`<root>/src/common`, so it isn't copied into modules; point it at a module, or run
+it from inside one:
 
 ```sh
+python boilerplate/scripts/pull.py path/to/module   # or, from the module root:
 cd my-module && python ../boilerplate/scripts/pull.py
 ```
 
