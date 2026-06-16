@@ -47,10 +47,16 @@ p <- cli$add_base_args(p)                   # --output_dir, --name
 p <- cli$add_stage_args(p, "embedding")     # the stage I/O contract
 # your own method params — argparser directly (its add_argument requires `help`):
 p <- add_argument(p, "--n_components", type = "integer", help = "number of PCs")
-p <- cli$add_choice(p, "--solver", c("arpack", "randomized"))  # an enum we enforce
-args <- cli$parse_args(p)
-# args$output_dir, args$name, args$pcas, args$n_components, args$solver
+args <- parse_args(p)                        # argparser's own parser
+# args$output_dir, args$name, args$pcas.tsv, args$n_components
 ```
+
+The R helpers are deliberately thin: they only translate the schema's flags into
+`argparser::add_argument` calls, then hand off to `argparser` for parsing. So
+`argparser` owns naming (a flag's value is read off the de-dashed flag, e.g.
+`--pcas.tsv` → `args$pcas.tsv`) and there's no enforcement of `required` or
+`choices`. (The Python engine does honor a schema `dest` and marks args required;
+if you need that parity in R, enforce it in your entrypoint.)
 
 Loading into `cli` (via `source(..., local = cli)`, or equally `sys.source(...,
 envir = cli)`) keeps every helper inside that environment — call them as
@@ -59,11 +65,6 @@ envir = cli)`) keeps every helper inside that environment — call them as
 shared schema at `src/common/schema/` (relative to your module root, where `ob`
 runs entrypoints); if yours lives elsewhere, pass `schema_dir =` or set
 `cli$SCHEMA_DIR` once after sourcing.
-
-Native `argparser` has no `choices`, so for an enum method param use `cli$add_choice`
-(above) rather than a plain `add_argument`. That's the one R-only helper, and it
-makes `cli$parse_args` enforce the allowed set the way the schema's own enums are
-enforced.
 
 You don't have to write the base or stage flags: `add_base_args`/`add_stage_args` bring
 in whatever the boilerplate and the benchmark declared for the current version of the benchmark.

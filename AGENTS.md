@@ -132,9 +132,9 @@ helpers; method params are *not* schema-driven — the author hand-writes them:
   plain `argparse` in the author's own entrypoint, so `pull`/`copier update`
   never touches them.
 
-A schema arg may carry an optional `choices` list (an enum), validated like
-`argparse`. Each schema arg is added `required=True` (a run is reproducible from
-its invocation line).
+A schema arg may carry an optional `choices` list (an enum) and a `dest` rename.
+The **Python** engine adds each arg `required=True` and enforces `choices`/`dest`;
+the **R** engine deliberately does not (see *Import convention* below).
 
 > **History.** An earlier iteration made `cli.*` a *parser factory*:
 > `parse_args("pca")` built the whole parser from JSON, composed a third
@@ -163,10 +163,12 @@ args <- parse_args(p)
 ```
 
 Both languages mutate the author's parser (Python `argparse`, R `argparser` — pure
-R, not the Python-wrapping `argparse` package), then parse. The one asymmetry:
-`argparser` has no `choices`, so R adds an `add_choice(p, flag, values)` helper for
-author enums (and `parse_args` enforces required/choices/dest, which `argparser`
-can't) — Python gets those from `argparse` natively. The template keeps the `src/common/{python,r}/` split
+R, not the Python-wrapping `argparse` package), then parse. They are **not**
+symmetric: `cli.py` enforces the schema's `required`/`choices` and applies its
+`dest` renames, while `cli.R` is intentionally minimal — it only translates each
+schema arg into an `argparser::add_argument` call and lets `argparser` own naming
+and parsing, so `required`/`choices`/`dest` aren't enforced there (parse with
+`argparser`'s own `parse_args`). The template keeps the `src/common/{python,r}/` split
 for maintenance; vendoring flattens the chosen language to `src/common/cli.*`
 with `schema/` alongside. Python's `cli.py` locates `schema/` relative to itself
 (`__file__`), so it works at either path; R's `cli.R` has no `__file__`, so it
