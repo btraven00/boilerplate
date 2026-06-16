@@ -67,7 +67,7 @@ Concretely, this means:
 .
 ├── AGENTS.md            # this file
 ├── README.md
-├── omnibenchmark.yaml   # makes this repo double as a (self-validating) module; also template-for:
+├── omnibenchmark.yaml   # makes this repo double as a (self-validating) module; also plan:
 ├── run.sh               # placeholder default entrypoint (so it validates as a module)
 ├── CITATION.cff         # required for `ob validate module`
 ├── LICENSE
@@ -89,9 +89,9 @@ Concretely, this means:
 Note for agents: most directories now have content. `src/common/{python,r}/`
 holds the shared CLI helpers (`cli.py` / `cli.R`); the schemas they read are
 benchmark-owned (the plan's `schema/`), vendored into a module's
-`src/common/schema/` — the boilerplate keeps only example copies in
-`tests/fixtures/schema/`. `validators/` holds one copied example. These are
-early/spike-stage — read before assuming a shape.
+`src/common/schema/` — the boilerplate keeps only example copies in the example
+module fixture `tests/fixtures/module/`. `validators/` holds one copied example.
+These are early/spike-stage — read before assuming a shape.
 
 ### `src/common/{python,r}/` and `src/common/schema/`
 Shared, language-split utilities copied into a module — a **reserved,
@@ -100,11 +100,11 @@ re-rendered cleanly (see *Working in this repo*). Keep the public surface
 (function/CLI names) **identical across languages** so the Python and R
 implementations feel like one contract; keep dependencies light.
 
-The first utility is **shared CLI helpers**. An *interface* — a named, versioned
-CLI contract owned by a benchmark — is defined as data in the benchmark's own
+The first utility is **shared CLI helpers**. An *interface* — a named CLI contract
+owned by a benchmark — is defined as data in the benchmark's own
 `schema/<interface>.json` and vendored into a module's `src/common/schema/`. The
-boilerplate carries none itself (example copies live in `tests/fixtures/schema/`
-for the tests and docs). The module author writes their **own**
+boilerplate carries none itself (example copies live in the example module
+fixture `tests/fixtures/module/` for the tests and docs). The module author writes their **own**
 `argparse` (Python) / `argparser` (R) CLI and owns the parser; `cli.py` (stdlib
 `argparse`) and `cli.R` (the `argparser` CRAN package + `jsonlite` — `argparser`
 is pure R, *not* the `argparse` package, which pulls Python) just *inject* the
@@ -181,9 +181,10 @@ literals — `__version__` in `cli.py`, `COMMON_VERSION` in `cli.R` (lines tagge
 reading the file at runtime) means the vendored copy carries the version with no
 file dependency. **Bump VERSION on any change under `src/common/`, then run
 `pixi run version`**; `version-check` gates drift in CI. This versions only the
-**engine**. A **stage schema** is versioned independently — each carries its own
-`version` field in the benchmark's `schema/`; there is no separate bundle
-version.
+**engine**. Stage schemas are **not** independently versioned: a module vendors
+whatever its benchmark's `schema/` publishes at the pinned `ref` (the `ref` is the
+only version handle), and the engine loads a stage by name — erroring if it isn't
+there.
 
 ### `validators/`
 I/O contract checks, routed `validators/<STAGE_NAME>/<OUTPUT_NAME>/validate.<ext>`
@@ -245,27 +246,30 @@ This repo carries its own `omnibenchmark.yaml`, which does double duty:
 ```yaml
 entrypoints:
   default: run.sh        # placeholder — real entrypoints (validators) come later
-template-for:
-  - name: split-stages   # short LABEL for the benchmark
-    repo: https://github.com/omni-scrna/split-stages-plan
-    plan: benchmark_conda.yaml   # the benchmark definition within that repo
-implements:
-  - split-stages/embedding@0.1.0   # <benchmark-label>/<interface>@<version>
+plan:                    # the plan this boilerplate is the template for
+  repo: https://github.com/omni-scrna/split-stages-plan
+  file: benchmark_conda.yaml   # the benchmark definition within that repo
+  ref: main
 ```
 
 - **`entrypoints`** make the repo a valid omnibenchmark module, so it
   **self-validates**: `ob validate module .` (and the `validate-module` action)
   pass against it. The validator only requires an `entrypoints.default` key, not
   a working entrypoint yet — hence the `run.sh` placeholder.
-- **`template-for`** lists the benchmark(s) this scaffolds for. Each entry is one
-  benchmark: a short `name` LABEL, the `repo`, and `plan` (the benchmark
-  definition file within that repo — a repo may hold several). `ob` ignores it.
-- **`implements`** declares the interface(s) a module satisfies, as
-  `<benchmark-label>/<interface>@<version>`. The interface is defined as data in
-  `src/common/schema/<interface>.json`. `pixi run check-interfaces` verifies each
-  `implements` entry resolves to a `template-for` label and a carried schema with
-  the matching `interface` + `version` (a CI gate). (Here it's illustrative —
-  this repo is a template that also self-validates.)
+- **`plan`** is the single template→plan pointer: the boilerplate is a template
+  for *one* plan, so it records that plan's `repo`/`file`/`ref`. Only dev tooling
+  reads it — `refresh-fixtures` vendors the example schemas from this plan's
+  `schema/` — and `ob` ignores it. Note this is **not** a module's `benchmarks:`:
+  the boilerplate consumes no benchmark.
+
+A **module's** manifest is the consumer shape, declared with `benchmarks:` — a list
+of the benchmark(s) it plugs into, each `{name, repo, plan, ref}`. `pull` vendors
+each one's whole `schema/` dir into `src/common/schema/`; the entrypoint loads the
+stage it needs by name and the engine errors if that schema isn't vendored. There
+is no `implements:` ledger and no per-interface version handshake — a module simply
+carries the schemas its benchmark publishes at the pinned `ref`. See
+`tests/fixtures/module/omnibenchmark.yaml` for a worked example — a realistic module
+with vendored `src/common/schema/`.
 
 ### Vendoring shared code + interfaces (`scripts/pull.py`, interim)
 How the shared code and interface schemas get *into* a module — until `ob` owns
@@ -285,12 +289,11 @@ refs:
 - **`boilerplate:`** `{repo, ref, lang}` → the common engine (`cli.*`) into the
   module's `src/common/` package (with `src/` on the path, `from common import
   cli` works).
-- the benchmark's schemas → `src/common/schema/`: `_base.json` (universal) plus,
-  for each **`implements:`** `<label>/<iface>@<ver>`, the benchmark's authoritative
-  `schema/<iface>.json` (repo/ref from the matching `template-for` entry).
+- the benchmark's schemas → `src/common/schema/`: the whole `schema/` dir
+  (`_base.json` + every stage `<iface>.json`) of each **`benchmarks:`** entry.
 
-Vendored files are committed in the module (offline-runnable; `check-interfaces`
-needs no network) — `pull` just refreshes them. To take an upstream change, bump
+Vendored files are committed in the module (offline-runnable) — `pull` just
+refreshes them. To take an upstream change, bump
 the `ref` in `omnibenchmark.yaml` (when moving to a new pin), re-run `pull`, and
 commit the refresh.
 
@@ -309,17 +312,15 @@ boilerplate:
   repo: https://github.com/omni-scrna/boilerplate
   ref: v0.1.0          # pin; tag or branch
   lang: python
-template-for:
+benchmarks:
   - { name: split-stages, repo: …/split-stages-plan, plan: benchmark_conda.yaml, ref: main }
-implements:
-  - split-stages/embedding@0.1.0
 ```
 
 This is deliberately lightweight and easy to delete once `ob` subsumes it (no
 submodule residue). Precondition for the schema pull: the benchmark must
-publish them at `schema/<iface>.json` (the plan now does; if one is missing
-`pull` notes and skips it). Discovery is bidirectional: a plan can point at its boilerplate, and
-the boilerplate's `template-for` points back at the plan.
+publish a `schema/` dir (the plan now does; if it's absent `pull` notes and skips
+it). Discovery is bidirectional: a plan can point at its boilerplate, and
+a module's `benchmarks` points back at the plan.
 
 ### `scripts/` and `pixi.toml`
 Maintenance for working *on* the template itself — **never copied into a
@@ -330,8 +331,6 @@ private action toolchains). Its tasks:
 - `pixi run docs` / `docs-check` — re-embed doc snippets / fail on drift.
 - `pixi run version` / `version-check` — stamp `src/common/VERSION` into the
   language sources / fail on drift.
-- `pixi run check-interfaces` — verify `omnibenchmark.yaml` `implements` matches
-  `template-for` labels and the carried `src/common/schema/` specs.
 - `pixi run test` — Python + R tests for `src/common` (under `tests/`).
 - `pixi run lint` / `typecheck` — `ruff` and `mypy` over the Python side.
 - `pixi run check` — all of the above; this is what CI runs and gates on.

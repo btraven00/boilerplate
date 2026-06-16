@@ -25,7 +25,6 @@ Schema shape::
 
     {
       "interface": "embedding",
-      "version": "0.1.0",
       "benchmark": "omni-scrna/split-stages-plan",
       "args": [
         {"flag": "--pcas.tsv", "dest": "pcas", "type": "path", "help": "..."},
@@ -123,10 +122,15 @@ def add_stage_args(parser: argparse.ArgumentParser, interface: str,
     author's parser. Returns the parser for chaining."""
     stage_path = schema_dir / f"{interface}.json"
     if not stage_path.is_file():
-        raise SystemExit(f"interface schema not found: {stage_path}")
+        available = sorted(
+            p.stem for p in schema_dir.glob("*.json") if p.stem != _BASE_SCHEMA
+        ) if schema_dir.is_dir() else []
+        have = f"available: {', '.join(available)}" if available else "no stage schemas vendored"
+        raise SystemExit(f"interface '{interface}' not found in {schema_dir} ({have})")
     return _add_args(parser, _read_schema(stage_path).get("args", []))
 
 
+# TODO: remove this cruft
 if __name__ == "__main__":  # smoke / live demo
     parser = argparse.ArgumentParser(description="cli helpers smoke demo")
     add_base_args(parser)

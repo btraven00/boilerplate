@@ -3,9 +3,9 @@
 # Plain base R + stopifnot (no testthat). Exits non-zero on first failure.
 
 # Example schemas stand in for the set a real module vendors from the plan's
-# schema/ — see tests/fixtures/schema/README.md.
+# schema/ — see tests/fixtures/module/README.md.
 source("src/common/r/cli.R")
-SCHEMA_DIR <- "tests/fixtures/schema"
+SCHEMA_DIR <- "tests/fixtures/module/src/common/schema"
 
 errors <- function(expr) tryCatch({ force(expr); FALSE }, error = function(e) TRUE)
 parser <- function() arg_parser("test", hide.opts = TRUE)
@@ -60,7 +60,7 @@ stopifnot(is.integer(b$i), b$i == 3L, is.numeric(b$f), b$f == 1.5)
 # namespaced load: helpers confined to `ns`, schema still located
 ns <- new.env()
 source("src/common/r/cli.R", local = ns)
-ns$SCHEMA_DIR <- "tests/fixtures/schema"
+ns$SCHEMA_DIR <- "tests/fixtures/module/src/common/schema"
 stopifnot(exists("parse_args", envir = ns, inherits = FALSE))
 np <- ns$add_stage_args(ns$add_base_args(parser()), "embedding")
 nsa <- ns$parse_args(np, argv = emb)

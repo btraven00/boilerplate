@@ -6,9 +6,8 @@ Reads ./omnibenchmark.yaml and pulls, at pinned refs, via shallow+sparse git:
   - `boilerplate:` {repo, ref, lang} -> the common engine (cli.*), into
     ./src/common/ (the import package: with `src/` on the path, `from common
     import cli`).
-  - the benchmark's schemas, into ./src/common/schema/: `_base.json` (universal)
-    plus each `implements: <label>/<iface>@<ver>` -> the benchmark's authoritative
-    schema/<iface>.json (repo/ref from the matching `template-for` entry).
+  - the benchmark's schemas, into ./src/common/schema/: the whole `schema/` dir
+    (`_base.json` + every stage `<iface>.json`) of each benchmark in `benchmarks:`.
 
 It also records the *resolved* sources in ./src/common/.provenance.json — the
 engine commit and each benchmark the schemas came from (repo/ref/commit) — an
@@ -29,7 +28,6 @@ doesn't matter. Point it at a module, or run it from inside one:
 from __future__ import annotations
 
 import json
-import re
 import shutil
 import subprocess
 import sys
@@ -38,8 +36,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
-
-_IMPL = re.compile(r"^(?P<label>[^/]+)/(?P<iface>[^@]+)@(?P<ver>.+)$")
 
 
 def _sparse_fetch(repo: str, ref: str, paths: list[str]) -> Path:
@@ -103,73 +99,52 @@ def _vendor_common(bp: dict, common: Path) -> dict:
             "version": version, "lang": lang}
 
 
-def _fetch_schemas_from(bench: dict, names: list[str],
-                        schema_dir: Path) -> tuple[list[str], str | None]:
-    """Fetch schema/<name>.json for each name from one benchmark in a single sparse
-    checkout. Returns (names actually vendored, the benchmark's resolved commit)."""
+def _fetch_schemas_from(bench: dict, schema_dir: Path) -> tuple[list[str], str | None]:
+    """Vendor the whole schema/ dir (every *.json) of one benchmark in a single
+    sparse checkout. Returns (names vendored, the benchmark's resolved commit)."""
     ref = bench.get("ref", "main")
-    # Sparse-checkout the schema/ dir (cone mode takes directories, not files),
-    # then copy the specific files we want.
     try:
         src = _sparse_fetch(bench["repo"], ref, ["schema"])
     except subprocess.CalledProcessError:
         print(f"skip {bench['repo']}@{ref}: fetch failed", file=sys.stderr)
         return [], None
     try:
+        files = sorted((src / "schema").glob("*.json")) if (src / "schema").is_dir() else []
+        if not files:
+            print(f"note: {bench['repo']}@{ref} publishes no schema/ yet", file=sys.stderr)
+            return [], _git_head(src)
         schema_dir.mkdir(parents=True, exist_ok=True)
         got = []
-        for n in names:
-            f = src / "schema" / f"{n}.json"
-            if f.exists():
-                shutil.copy2(f, schema_dir / f"{n}.json")
-                print(f"vendored src/common/schema/{n}.json from {bench['repo']}@{ref}")
-                got.append(n)
-            else:
-                print(f"note: schema/{n}.json not published in {bench['repo']} yet",
-                      file=sys.stderr)
+        for f in files:
+            shutil.copy2(f, schema_dir / f.name)
+            print(f"vendored src/common/schema/{f.name} from {bench['repo']}@{ref}")
+            got.append(f.stem)
         return got, _git_head(src)
     finally:
         shutil.rmtree(src, ignore_errors=True)
 
 
-def _vendor_schemas(cfg: dict, common: Path) -> tuple[int, int, list[dict]]:
-    """Vendor _base + each implemented schema from the benchmark(s) in template-for.
-    Returns (vendored count, pending count, per-benchmark provenance records)."""
-    benches = {
-        e["name"]: e
-        for e in (cfg.get("template-for") or [])
-        if isinstance(e, dict) and "name" in e
-    }
+def _vendor_schemas(cfg: dict, common: Path) -> tuple[int, list[dict]]:
+    """Vendor each benchmark's whole schema/ dir into src/common/schema/. A module
+    carries every schema its benchmark(s) publish; the engine loads one by name at
+    runtime and errors if it's absent (no separate `implements` ledger).
+    Returns (vendored count, per-benchmark provenance records)."""
+    benches = [
+        e for e in (cfg.get("benchmarks") or [])
+        if isinstance(e, dict) and "repo" in e
+    ]
     schema_dir = common / "schema"
 
-    # What to fetch from which benchmark: _base from the first template-for (it's
-    # the same everywhere), plus each implemented schema from its label's benchmark.
-    wanted: dict[str, set[str]] = {}
-    if benches:
-        wanted[next(iter(benches))] = {"_base"}
-    unresolved = 0
-    for item in cfg.get("implements") or []:
-        m = _IMPL.match(str(item))
-        if not m:
-            continue
-        if m["label"] not in benches:
-            print(f"skip {item}: no template-for label '{m['label']}'", file=sys.stderr)
-            unresolved += 1
-            continue
-        wanted.setdefault(m["label"], set()).add(m["iface"])
-
-    vendored = missing = 0
+    vendored = 0
     records: list[dict] = []
-    for label, names in wanted.items():
-        bench = benches[label]
-        got, commit = _fetch_schemas_from(bench, sorted(names), schema_dir)
+    for bench in benches:
+        got, commit = _fetch_schemas_from(bench, schema_dir)
         vendored += len(got)
-        missing += len(names) - len(got)
         if got:
-            records.append({"benchmark": label, "repo": bench["repo"],
-                            "ref": bench.get("ref", "main"), "commit": commit,
-                            "files": got})
-    return vendored, unresolved + missing, records
+            records.append({"benchmark": bench.get("name", bench["repo"]),
+                            "repo": bench["repo"], "ref": bench.get("ref", "main"),
+                            "commit": commit, "files": got})
+    return vendored, records
 
 
 def main() -> int:
@@ -178,7 +153,7 @@ def main() -> int:
     common = root / "src" / "common"
     bp = cfg.get("boilerplate")
     engine = _vendor_common(bp, common) if bp else None
-    vendored, pending, schemas = _vendor_schemas(cfg, common)
+    vendored, schemas = _vendor_schemas(cfg, common)
     _write_provenance(common, engine, schemas)
 
     if engine:
@@ -186,8 +161,8 @@ def main() -> int:
                f"{engine['commit'][:12]} (v{engine['version']})")
     else:
         msg = "OK: nothing to sync (no `boilerplate:` in omnibenchmark.yaml)"
-    if vendored or pending:
-        msg += f"; schemas: {vendored} vendored, {pending} pending"
+    if vendored:
+        msg += f"; schemas: {vendored} vendored"
     print(msg)
     return 0
 

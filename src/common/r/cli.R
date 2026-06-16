@@ -90,8 +90,19 @@ add_base_args <- function(p, schema_dir = SCHEMA_DIR)
   .add_specs(p, .read_args(file.path(schema_dir, paste0(.BASE_SCHEMA, ".json"))))
 
 # Inject a stage's I/O contract (schema/<interface>.json) onto the author's parser.
-add_stage_args <- function(p, interface, schema_dir = SCHEMA_DIR)
-  .add_specs(p, .read_args(file.path(schema_dir, paste0(interface, ".json"))))
+# Errors (listing what is vendored) if the named interface isn't present.
+add_stage_args <- function(p, interface, schema_dir = SCHEMA_DIR) {
+  path <- file.path(schema_dir, paste0(interface, ".json"))
+  if (!file.exists(path)) {
+    available <- setdiff(sub("\\.json$", "", list.files(schema_dir, pattern = "\\.json$")),
+                         .BASE_SCHEMA)
+    have <- if (length(available)) paste("available:", paste(available, collapse = ", "))
+            else "no stage schemas vendored"
+    stop(sprintf("interface '%s' not found in %s (%s)", interface, schema_dir, have),
+         call. = FALSE)
+  }
+  .add_specs(p, .read_args(path))
+}
 
 # Author helper for an enum param (argparser has no `choices`): add the flag and
 # register its allowed values so cli$parse_args enforces them — the same path the
@@ -103,6 +114,11 @@ add_choice <- function(p, flag, choices, type = "string", help = "")
 # we enforce required (every arg must be supplied) + choices, and map registered
 # flags onto their `dest`.
 parse_args <- function(p, argv = commandArgs(trailingOnly = TRUE)) {
+
+  # TODO: remove the checks for requires and choices to simplify the code.
+  # Leave a note saying that argparser does not support these natively.
+  # and that they need to be enforced by the caller.
+  #
   parsed <- argparser::parse_args(p, argv)
   rules <- attr(p, "rules") %||% list()
 

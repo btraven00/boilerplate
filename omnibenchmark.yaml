@@ -5,20 +5,10 @@
 entrypoints:
   default: run.sh
 
-# Benchmarks this boilerplate scaffolds for. Each entry is one benchmark: a short
-# LABEL (`name`, used by `implements`), the `repo`, and `plan` — the benchmark
-# definition file within that repo (a repo may hold more than one). `ob` ignores
-# these keys.
-template-for:
-  - name: split-stages
-    repo: https://github.com/omni-scrna/split-stages-plan
-    plan: benchmark_conda.yaml
-    ref: main              # pin: tag/branch to vendor interfaces from
-
-# Interfaces this module implements, as <benchmark-label>/<interface>@<version>.
-# The interface is defined as data in the benchmark's schema/<interface>.json
-# (a module vendors the ones it implements into src/common/schema/). This repo is
-# a template carrying no source schemas, so its self-check resolves the example
-# against tests/fixtures/schema/ (see the check-interfaces task in pixi.toml).
-implements:
-  - split-stages/embedding@0.1.0
+# The plan this boilerplate is the template for.
+# It defines the benchmark repo and stages that will be used by this template.
+# This will not be needed if we merge the boilerplate into the plan repo itself.
+plan:
+  repo: https://github.com/omni-scrna/split-stages-plan
+  file: benchmark_conda.yaml   # the benchmark plan within that repo
+  ref: main                    # pin: tag or branch to track benchmark schemas from

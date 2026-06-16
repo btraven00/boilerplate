@@ -1,0 +1,21 @@
+# Example consumer module — a realistic omnibenchmark.yaml as a module generated
+# from this boilerplate would carry it. It stands in for a real module so the tests
+# run against a true module layout (this manifest + the vendored src/common/schema/)
+# instead of the boilerplate pretending to be one.
+entrypoints:
+  default: run.sh
+
+# Where the shared engine (cli.*) is vendored from.
+boilerplate:
+  repo: https://github.com/omni-scrna/boilerplate
+  ref: v0.1.0
+  lang: python
+
+# The benchmark(s) this module plugs into. `pull` vendors each one's whole schema/
+# dir into src/common/schema/; the entrypoint loads the stage it needs by name and
+# the engine errors if it isn't present. A module may serve more than one benchmark.
+benchmarks:
+  - name: split-stages
+    repo: https://github.com/omni-scrna/split-stages-plan
+    plan: benchmark_conda.yaml
+    ref: main

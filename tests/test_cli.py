@@ -12,8 +12,8 @@ sys.path.insert(0, str(ROOT / "src" / "common" / "python"))
 import cli  # noqa: E402
 
 # Example schemas stand in for the set a real module vendors from the plan's
-# schema/ — see tests/fixtures/schema/README.md.
-SCHEMA = ROOT / "tests" / "fixtures" / "schema"
+# schema/ — see tests/fixtures/module/README.md.
+SCHEMA = ROOT / "tests" / "fixtures" / "module" / "src" / "common" / "schema"
 
 # An entrypoint-style parser: shared base + stage args, then the author's own.
 EMB = ["--output_dir", "o", "--name", "n",

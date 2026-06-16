@@ -21,7 +21,7 @@ r-argparser = "*"
 # to keep the toolchain small — R has no standard type checker, and lintr is heavy.)
 ruff = "*"
 mypy = "*"
-# Read omnibenchmark.yaml in the interface-consistency check.
+# Read omnibenchmark.yaml in the vendoring scripts (pull / refresh-fixtures).
 pyyaml = "*"
 
 [tasks]
@@ -32,11 +32,6 @@ docs-check = "python scripts/embed_snippets.py --check"
 # Stamp src/common/VERSION into the language sources (single source of truth).
 version = "python scripts/stamp_version.py"
 version-check = "python scripts/stamp_version.py --check"
-
-# Verify omnibenchmark.yaml `implements` matches the interface schemas. The
-# template carries no source schemas (they live in the plan's schema/), so we
-# check against the example fixtures that stand in for a module's vendored set.
-check-interfaces = "python scripts/check_interfaces.py --schema-dir tests/fixtures/schema"
 
 # Re-vendor the example schema fixtures from the plan, so the engine is tested
 # against the real contract. `refresh-fixtures-check` (CI) fails on drift; it's a
@@ -58,4 +53,4 @@ lint = "ruff check src/common/python tests scripts"
 typecheck = "mypy src/common/python"
 
 # What CI runs and what merges are gated on. Keep this green.
-check = { depends-on = ["docs-check", "version-check", "check-interfaces", "lint", "typecheck", "test"] }
+check = { depends-on = ["docs-check", "version-check", "lint", "typecheck", "test"] }
