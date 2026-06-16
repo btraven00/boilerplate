@@ -5,19 +5,20 @@
 > This page is about *using* the shared helpers from a module entrypoint.
 
 This guide is for **module authors**: you write your own `argparse` (Python) or
-base-R CLI, and import a couple of helpers from `src/common/` to inject the
+`argparser` (R) CLI, and import a couple of helpers from `src/common/` to inject the
 *shared* parts that are provided by the benchmark (the universal base args and
-your stage's I/O contract), so Python and R modules share the same definition of
-the CLI arguments.
+your stage's I/O contract). In this way, Python and R modules share the same definition of
+the CLI arguments, and you can update definitions easily if the benchmark changes.
 
 ## The idea
 
-You own your entrypoint's parser. The flags that are **shared** (the universal
-base args, and the stage's I/O contract owned by the benchmark) are declared
-once as JSON in the benchmark's `schema/` (vendored into your module's
-`src/common/schema/`) and *added onto your parser* by using `src/common/cli`. Your own any method parameters you add by hand,
-for python that's plain `argparse`. In this way the whole CLI for an entrypoint
-stays visible in your file.
+You own your entrypoint's parser. The flags that are **shared** (the base args, and the stage's I/O contract)
+are declared as JSON in the benchmark's plan `schema/` folder (vendored into
+your module's `src/common/schema/`) and *added onto your parser* by using
+`src/common/cli`. Your own any method parameters you add by hand, for python
+that's `argparse` and for R `argparser`. 
+
+In this way the whole CLI for an entrypoint stays visible in your file.
 
 ```python
 import argparse
@@ -59,15 +60,14 @@ shared schema at `src/common/schema/` (relative to your module root, where `ob`
 runs entrypoints); if yours lives elsewhere, pass `schema_dir =` or set
 `cli$SCHEMA_DIR` once after sourcing.
 
-`argparser` has no `choices`, so for an enum method param use `cli$add_choice`
-(above) rather than a plain `add_argument` — that's the one R-only helper, and it
+Native `argparser` has no `choices`, so for an enum method param use `cli$add_choice`
+(above) rather than a plain `add_argument`. That's the one R-only helper, and it
 makes `cli$parse_args` enforce the allowed set the way the schema's own enums are
 enforced.
 
-You don't write the base or stage flags — `add_base_args`/`add_stage_args` bring
-in whatever the boilerplate and the benchmark declared. A stage flag can arrive
-under a tidier attribute name than its flag (e.g. `--normalized_selected.h5` →
-`args.input_h5`); run your entrypoint with `--help` to see exactly what you get.
+You don't have to write the base or stage flags: `add_base_args`/`add_stage_args` bring
+in whatever the boilerplate and the benchmark declared for the current version of the benchmark.
+Run your entrypoint with `--help` to see exactly what you get.
 
 ## Worked example
 
