@@ -25,7 +25,7 @@ It writes the common helpers to `src/common/` (flattening the `lang` you pick to
 `omnibenchmark.yaml`:
 
 ```yaml
-boilerplate:
+templates:
   repo: https://github.com/omni-scrna/boilerplate
   ref: v0.1.0          # pin: a tag or a branch
   lang: r              # or: python

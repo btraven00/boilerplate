@@ -6,7 +6,7 @@ entrypoints:
   default: run.sh
 
 # Where the shared engine (cli.*) is vendored from.
-boilerplate:
+templates:
   repo: https://github.com/omni-scrna/boilerplate
   ref: v0.1.0
   lang: python

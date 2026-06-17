@@ -3,7 +3,7 @@
 
 Reads ./omnibenchmark.yaml and pulls, at pinned refs, via shallow+sparse git:
 
-  - `boilerplate:` {repo, ref, lang} -> the common engine (cli.*), into
+  - `templates:` {repo, ref, lang} -> the common engine (cli.*), into
     ./src/common/ (the import package: with `src/` on the path, `from common
     import cli`).
   - the benchmark's schemas, into ./src/common/schema/: the whole `schema/` dir
@@ -151,7 +151,7 @@ def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
     cfg = yaml.safe_load((root / "omnibenchmark.yaml").read_text()) or {}
     common = root / "src" / "common"
-    bp = cfg.get("boilerplate")
+    bp = cfg.get("templates")
     engine = _vendor_common(bp, common) if bp else None
     vendored, schemas = _vendor_schemas(cfg, common)
     _write_provenance(common, engine, schemas)
@@ -160,7 +160,7 @@ def main() -> int:
         msg = (f"OK: synced src/common/ <- {engine['repo']}@{engine['ref']} "
                f"{engine['commit'][:12]} (v{engine['version']})")
     else:
-        msg = "OK: nothing to sync (no `boilerplate:` in omnibenchmark.yaml)"
+        msg = "OK: nothing to sync (no `templates:` in omnibenchmark.yaml)"
     if vendored:
         msg += f"; schemas: {vendored} vendored"
     print(msg)
