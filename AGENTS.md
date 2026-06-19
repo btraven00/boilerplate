@@ -172,8 +172,9 @@ and parsing, so `required`/`choices`/`dest` aren't enforced there (parse with
 for maintenance; vendoring flattens the chosen language to `src/common/cli.*`
 with `schema/` alongside. Python's `cli.py` locates `schema/` relative to itself
 (`__file__`), so it works at either path; R's `cli.R` has no `__file__`, so it
-defaults `SCHEMA_DIR` to `src/common/schema` (the vendored layout, which the
-template's own tests also match) and takes a `schema_dir =` override.
+reads the `SCHEMA_DIR` global, set to `src/common/schema` (the vendored layout,
+which the template's own tests also match) — reassign that global to point
+elsewhere.
 
 `src/common/VERSION` versions the shared code as a whole (Python and R move
 together), so a module can report which copy of the scaffolding it carries.

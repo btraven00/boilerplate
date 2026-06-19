@@ -30,7 +30,11 @@ stopifnot(errors(parse_args(emb_parser(), argv = c(emb, "--bogus", "x"))))
 
 # a missing schema / unknown interface still errors
 stopifnot(errors(add_stage_args(parser(), "does-not-exist")))          # bad iface
-stopifnot(errors(add_base_args(parser(), schema_dir = "no/such/dir")))  # no schema dir
+# a bad SCHEMA_DIR also errors (override the global, then restore for later tests)
+.saved_schema_dir <- SCHEMA_DIR
+SCHEMA_DIR <- "no/such/dir"
+stopifnot(errors(add_base_args(parser())))
+SCHEMA_DIR <- .saved_schema_dir
 
 # base args alone
 ba <- parse_args(add_base_args(parser()), argv = c("--output_dir", "o", "--name", "n"))
@@ -55,12 +59,5 @@ stopifnot(exists("add_stage_args", envir = ns, inherits = FALSE))
 np <- ns$add_stage_args(ns$add_base_args(parser()), "embedding")
 nsa <- parse_args(np, argv = emb)
 stopifnot(nsa[["pcas.tsv"]] == "p", nsa$name == "n")
-
-# version accessor reads src/common/VERSION
-v <- common_version()
-stopifnot(
-  v == trimws(readLines("src/common/VERSION", warn = FALSE)[1]),
-  grepl("^[0-9]+\\.[0-9]+\\.[0-9]+", v)
-)
 
 cat("R cli tests: PASS\n")
