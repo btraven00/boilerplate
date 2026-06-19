@@ -21,7 +21,7 @@ r-argparser = "*"
 # to keep the toolchain small — R has no standard type checker, and lintr is heavy.)
 ruff = "*"
 mypy = "*"
-# Read omnibenchmark.yaml in the vendoring scripts (pull / refresh-fixtures).
+# Read omnibenchmark.yaml in the sync scripts (pull / fetch-schema).
 pyyaml = "*"
 
 [tasks]
@@ -29,15 +29,11 @@ pyyaml = "*"
 docs = "python scripts/embed_snippets.py"
 docs-check = "python scripts/embed_snippets.py --check"
 
-# Stamp src/common/VERSION into the language sources (single source of truth).
-version = "python scripts/stamp_version.py"
-version-check = "python scripts/stamp_version.py --check"
-
-# Re-vendor the example schema fixtures from the plan, so the engine is tested
-# against the real contract. `refresh-fixtures-check` (CI) fails on drift; it's a
-# no-op until the plan publishes schema/ on the pinned ref. Needs network.
-refresh-fixtures = "python scripts/refresh_fixtures.py"
-refresh-fixtures-check = "python scripts/refresh_fixtures.py --check"
+# Fetch the plan's real schema/ into the gitignored tests/fixtures/schema/, so the
+# cli helpers are tested against the real contract (no checked-in copy). CI runs
+# this before `check`; run it locally before `test`. No-op until the plan publishes
+# schema/ on the pinned ref. Needs network.
+fetch-schema = "python scripts/fetch_schema.py"
 
 # Vendor common code + interface schemas into a module at pinned refs (interim,
 # pre-`ob`). pull.py is CWD-relative; a module author runs it from THEIR module
@@ -53,4 +49,4 @@ lint = "ruff check src/common/python tests scripts"
 typecheck = "mypy src/common/python"
 
 # What CI runs and what merges are gated on. Keep this green.
-check = { depends-on = ["docs-check", "version-check", "lint", "typecheck", "test"] }
+check = { depends-on = ["docs-check", "lint", "typecheck", "test"] }

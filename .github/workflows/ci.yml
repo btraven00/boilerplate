@@ -20,13 +20,13 @@ jobs:
       - uses: prefix-dev/setup-pixi@v0.9.6
         with:
           manifest-path: pixi.toml
-      # docs-sync + ruff + mypy + Python/R tests for src/common. Run `pixi run
-      # check` locally to reproduce. (Kept offline; the drift check below needs
-      # network, so it's a separate step.)
+      # Fetch the plan's real schema/ into the gitignored tests/fixtures/schema/
+      # so the cli helpers are tested against the live contract — no checked-in
+      # copy. No-op until the plan publishes schema/ on the pinned ref.
+      - run: pixi run fetch-schema
+      # docs-sync + ruff + mypy + Python/R tests for src/common. After the fetch
+      # this is offline; reproduce locally with `pixi run fetch-schema && pixi run check`.
       - run: pixi run check
-      # Fail if the schema fixtures have drifted from the plan's published
-      # schema/. No-op until the plan publishes schema/ on the pinned ref.
-      - run: pixi run refresh-fixtures-check
 
   validate-module:
     name: Self-validates as a module

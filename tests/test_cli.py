@@ -11,30 +11,30 @@ sys.path.insert(0, str(ROOT / "src" / "common" / "python"))
 
 import cli  # noqa: E402
 
-# Example schemas stand in for the set a real module vendors from the plan's
-# schema/ — see tests/fixtures/module/README.md.
-SCHEMA = ROOT / "tests" / "fixtures" / "module" / "src" / "common" / "schema"
+# The cli helpers are tested against the plan's real schema/, fetched into this
+# gitignored dir by `pixi run fetch-schema` (run it before the tests).
+SCHEMA = ROOT / "tests" / "fixtures" / "schema"
 
-# An entrypoint-style parser: shared base + stage args, then the author's own.
-EMB = ["--output_dir", "o", "--name", "n",
-       "--pcas.tsv", "p", "--rawdata.clusters_truth", "t"]
+# An entrypoint-style parser: shared base + a real stage's args, then the author's.
+ARGV = ["--output_dir", "o", "--name", "n",
+        "--properties.info", "p", "--rawdata.h5ad", "r"]
 
 
-def _embedding_parser() -> argparse.ArgumentParser:
+def _stage_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser()
     cli.add_base_args(p, schema_dir=SCHEMA)
-    cli.add_stage_args(p, "embedding", schema_dir=SCHEMA)
+    cli.add_stage_args(p, "two-filter", schema_dir=SCHEMA)
     return p
 
 
 class TestCli(unittest.TestCase):
     def test_base_then_stage_happy_path(self):
-        a = _embedding_parser().parse_args(EMB)
-        self.assertEqual(str(a.output_dir), "o")      # from _base.json
-        self.assertEqual(a.name, "n")                 # from _base.json
-        self.assertEqual(str(a.pcas), "p")            # stage schema dest override
-        self.assertEqual(str(a.clusters_truth), "t")
-        self.assertIsInstance(a.pcas, Path)           # type: path
+        a = _stage_parser().parse_args(ARGV)
+        self.assertEqual(str(a.output_dir), "o")        # from _base.json
+        self.assertEqual(a.name, "n")                   # from _base.json
+        self.assertEqual(str(a.properties_info), "p")   # stage schema dest override
+        self.assertEqual(str(a.input_h5), "r")          # dest override
+        self.assertIsInstance(a.input_h5, Path)         # type: path
         self.assertIsInstance(a.output_dir, Path)
 
     def test_default_dest_maps_dots_and_dashes(self):
@@ -42,11 +42,11 @@ class TestCli(unittest.TestCase):
 
     def test_unknown_flag_rejected(self):
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
-            _embedding_parser().parse_args(EMB + ["--bogus", "x"])
+            _stage_parser().parse_args(ARGV + ["--bogus", "x"])
 
     def test_missing_required_rejected(self):
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
-            _embedding_parser().parse_args(["--name", "n"])
+            _stage_parser().parse_args(["--name", "n"])
 
     def test_unknown_interface_errors(self):
         with self.assertRaises(SystemExit):
@@ -55,11 +55,6 @@ class TestCli(unittest.TestCase):
     def test_missing_schema_dir_errors(self):
         with self.assertRaises(SystemExit):
             cli.add_base_args(argparse.ArgumentParser(), schema_dir=Path("no/such/dir"))
-
-    def test_common_version(self):
-        v = cli.common_version()
-        self.assertEqual(v, (ROOT / "src" / "common" / "VERSION").read_text().strip())
-        self.assertRegex(v, r"^\d+\.\d+\.\d+")
 
     # ── helpers add args to the author's own parser ───────────────────────────
     def test_add_base_args_adds_universal(self):
@@ -71,10 +66,10 @@ class TestCli(unittest.TestCase):
 
     def test_author_method_params_coexist(self):
         # Shared base + stage from schema, then the author's own plain argparse.
-        p = _embedding_parser()
+        p = _stage_parser()
         p.add_argument("--solver", choices=["arpack", "randomized"], required=True)
         p.add_argument("--n_components", type=int, required=True)
-        a = p.parse_args(EMB + ["--solver", "arpack", "--n_components", "50"])
+        a = p.parse_args(ARGV + ["--solver", "arpack", "--n_components", "50"])
         self.assertEqual(a.solver, "arpack")
         self.assertEqual(a.n_components, 50)
 
