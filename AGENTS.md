@@ -171,7 +171,7 @@ elsewhere.
 The common code carries **no explicit version string**. Which copy of the
 scaffolding a module carries is identified by the **template `ref`** it was pulled
 at (the boilerplate commit/tag in `omnibenchmark.yaml`), recorded exactly as the
-resolved commit in `src/common/.provenance.json` (see below). A check-for-updates
+resolved commit in `src/common/.origin.json` (see below). A check-for-updates
 compares that recorded commit against the template's latest `main`. Stage schemas
 are likewise **not** independently versioned: a module carries whatever its
 benchmark's `schema/` publishes at the pinned `ref` (the `ref` is the only version
@@ -286,7 +286,7 @@ refreshes them. To take an upstream change, bump
 the `ref` in `omnibenchmark.yaml` (when moving to a new pin), re-run `pull`, and
 commit the refresh.
 
-`pull` also writes `src/common/.provenance.json`, recording the *resolved* sources
+`pull` also writes `src/common/.origin.json`, recording the *resolved* sources
 it fetched from — the common code's resolved commit, and each benchmark's
 repo/ref/commit. With no version literal in the shared code, this is *the* exact
 sync witness (and the version handle: diff its recorded commit against the
