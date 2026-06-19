@@ -79,7 +79,6 @@ Concretely, this means:
 ├── docs/                # module-author documentation
 ├── src/
 │   └── common/          # shared code copied into every module
-│       ├── VERSION      # version of the shared code; travels with the copy
 │       ├── python/      # rendered for Python modules
 │       └── r/           # rendered for R modules
 │                        # (schema/ exists only in a module, vendored from the benchmark)
@@ -136,14 +135,6 @@ A schema arg may carry an optional `choices` list (an enum) and a `dest` rename.
 The **Python** engine adds each arg `required=True` and enforces `choices`/`dest`;
 the **R** engine deliberately does not (see *Import convention* below).
 
-> **History.** An earlier iteration made `cli.*` a *parser factory*:
-> `parse_args("pca")` built the whole parser from JSON, composed a third
-> `<interface>.extends.json` overlay (per-`flag` override), and auto-picked the
-> sole stage schema — no `argparse` in the entrypoint. It was deliberately
-> simplified to these import-helpers (stakeholder feedback: too much machinery for
-> a bazaar-style template). The richer engine is recoverable from git history if
-> we revisit.
-
 **Import convention.** In a *rendered* module the shared code lives at
 `src/common/` (the pull script drops the language segment, leaving the chosen
 language's files plus `schema/`), so entrypoints use it as:
@@ -176,18 +167,14 @@ reads the `SCHEMA_DIR` global, set to `src/common/schema` (the vendored layout,
 which the template's own tests also match) — reassign that global to point
 elsewhere.
 
-`src/common/VERSION` versions the shared code as a whole (Python and R move
-together), so a module can report which copy of the scaffolding it carries.
-VERSION is the single source of truth; `pixi run version` **stamps** it into
-literals — `__version__` in `cli.py`, `COMMON_VERSION` in `cli.R` (lines tagged
-`x-release-version`) — which `common_version()` returns. Stamping (rather than
-reading the file at runtime) means the vendored copy carries the version with no
-file dependency. **Bump VERSION on any change under `src/common/`, then run
-`pixi run version`**; `version-check` gates drift in CI. This versions only the
-**engine**. Stage schemas are **not** independently versioned: a module vendors
-whatever its benchmark's `schema/` publishes at the pinned `ref` (the `ref` is the
-only version handle), and the engine loads a stage by name — erroring if it isn't
-there.
+The common code carries **no explicit version string**. Which copy of the
+scaffolding a module carries is identified by the **template `ref`** it was pulled
+at (the boilerplate commit/tag in `omnibenchmark.yaml`), recorded exactly as the
+resolved commit in `src/common/.provenance.json` (see below). A check-for-updates
+compares that recorded commit against the template's latest `main`. Stage schemas
+are likewise **not** independently versioned: a module carries whatever its
+benchmark's `schema/` publishes at the pinned `ref` (the `ref` is the only version
+handle), and the common code loads a stage by name — erroring if it isn't there.
 
 ### `validators/`
 I/O contract checks, routed `validators/<STAGE_NAME>/<OUTPUT_NAME>/validate.<ext>`
@@ -301,12 +288,13 @@ the `ref` in `omnibenchmark.yaml` (when moving to a new pin), re-run `pull`, and
 commit the refresh.
 
 `pull` also writes `src/common/.provenance.json`, recording the *resolved* sources
-it fetched from — the engine commit, and each benchmark's repo/ref/commit. This is
-an exact sync witness, independent of `src/common/VERSION` (which only moves on a
-deliberate bump), so it's the record of what a module actually carries —
-especially when a `ref` is a moving branch. It's committed alongside the vendored
-files. (Author-facing docs deliberately omit this; it's reference for maintainers
-and for debugging a module's sync state.)
+it fetched from — the common code's resolved commit, and each benchmark's
+repo/ref/commit. With no version literal in the shared code, this is *the* exact
+sync witness (and the version handle: diff its recorded commit against the
+template's latest `main` to check for updates) — the record of what a module
+actually carries, especially when a `ref` is a moving branch. It's committed
+alongside the copied-over files. (Author-facing docs deliberately omit this; it's
+reference for maintainers and for debugging a module's sync state.)
 
 A consuming module declares:
 
@@ -332,8 +320,6 @@ dev-task manifest, deliberately separate from `actions/*/pixi.toml` (which are
 private action toolchains). Its tasks:
 
 - `pixi run docs` / `docs-check` — re-embed doc snippets / fail on drift.
-- `pixi run version` / `version-check` — stamp `src/common/VERSION` into the
-  language sources / fail on drift.
 - `pixi run test` — Python + R tests for `src/common` (under `tests/`).
 - `pixi run lint` / `typecheck` — `ruff` and `mypy` over the Python side.
 - `pixi run check` — all of the above; this is what CI runs and gates on.
@@ -350,7 +336,7 @@ stay minimal (R has no standard type checker; `lintr` is heavy).
 ### Continuous integration
 `.github/workflows/ci.yml` tests **this repo's own deliverables** and **gates
 merges** (set branch protection to require both jobs). The `checks` job runs
-`pixi run check` (docs-sync, VERSION stamp, interface consistency, `ruff`,
+`pixi run check` (docs-sync, interface consistency, `ruff`,
 `mypy`, Python/R tests). The
 `validate-module` job dogfoods the catalog action against this repo
 (`uses: ./actions/validate-module`) — which works because the repo doubles as a
