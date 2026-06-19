@@ -10,7 +10,7 @@ Reads ./omnibenchmark.yaml and pulls, at pinned refs, via shallow+sparse git:
   - the benchmark's schemas, into ./src/common/schema/: the whole `schema/` dir
     (`_base.json` + every stage `<iface>.json`) of each benchmark in `benchmarks:`.
 
-It also records the *resolved* sources in ./src/common/.provenance.json — the
+It also records the *resolved* sources in ./src/common/.origin.json — the
 common code commit and each benchmark the schemas came from (repo/ref/commit).
 With no version literal in the shared code, the template commit *is* the version
 handle. Module author should commit it: it's the record of what this module
@@ -50,11 +50,15 @@ def _sparse_fetch(repo: str, ref: str, paths: list[str]) -> Path:
     return tmp
 
 
-def _copy_glob(src_dir: Path, dest_dir: Path) -> None:
+def _copy_glob(src_dir: Path, dest_dir: Path) -> list[str]:
+    """Copy every file in src_dir into dest_dir. Returns the names copied."""
     dest_dir.mkdir(parents=True, exist_ok=True)
+    copied = []
     for f in src_dir.glob("*"):
         if f.is_file():
             shutil.copy2(f, dest_dir / f.name)
+            copied.append(f.name)
+    return copied
 
 
 def _git_head(repo_dir: Path) -> str:
@@ -72,11 +76,11 @@ def _write_provenance(common: Path, engine: dict | None, schemas: list[dict]) ->
     check for updates (there is no version literal). Commit it."""
     common.mkdir(parents=True, exist_ok=True)
     prov = {
-        "engine": engine,
+        "common": engine,
         "schemas": schemas,
         "fetched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
-    (common / ".provenance.json").write_text(json.dumps(prov, indent=2) + "\n")
+    (common / ".origin.json").write_text(json.dumps(prov, indent=2) + "\n")
 
 
 def _vendor_common(bp: dict, common: Path) -> dict:
@@ -88,7 +92,8 @@ def _vendor_common(bp: dict, common: Path) -> dict:
     try:
         # Only the engine comes from the boilerplate now; schemas (incl. _base)
         # come from the benchmark — see _vendor_schemas.
-        _copy_glob(src / "src" / "common" / lang, common)
+        for name in _copy_glob(src / "src" / "common" / lang, common):
+            print(f"copied src/common/{name} from {bp['repo']}@{ref}")
         commit = _git_head(src)
     finally:
         shutil.rmtree(src, ignore_errors=True)
@@ -113,7 +118,7 @@ def _fetch_schemas_from(bench: dict, schema_dir: Path) -> tuple[list[str], str |
         got = []
         for f in files:
             shutil.copy2(f, schema_dir / f.name)
-            print(f"vendored src/common/schema/{f.name} from {bench['repo']}@{ref}")
+            print(f"copied src/common/schema/{f.name} from {bench['repo']}@{ref}")
             got.append(f.stem)
         return got, _git_head(src)
     finally:
@@ -158,8 +163,10 @@ def main() -> int:
     else:
         msg = "OK: nothing to sync (no `templates:` in omnibenchmark.yaml)"
     if vendored:
-        msg += f"; schemas: {vendored} vendored"
+        msg += f"; schemas: {vendored} copied"
     print(msg)
+    print("note: commit the schemas you use (src/common/schema/) along with "
+          "src/common/.origin.json — they record what this module uses.")
     return 0
 
 
