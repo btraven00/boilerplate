@@ -87,10 +87,11 @@ Concretely, this means:
 
 Note for agents: most directories now have content. `src/common/{python,r}/`
 holds the shared CLI helpers (`cli.py` / `cli.R`); the schemas they read are
-benchmark-owned (the plan's `schema/`), vendored into a module's
-`src/common/schema/` — the boilerplate keeps only example copies in the example
-module fixture `tests/fixtures/module/`. `validators/` holds one copied example.
-These are early/spike-stage — read before assuming a shape.
+benchmark-owned (the plan's `schema/`), copied into a module's
+`src/common/schema/` — the boilerplate keeps no copy of its own; the tests fetch
+the plan's real `schema/` at run time (`pixi run fetch-schema`, see below).
+`validators/` holds one copied example. These are early/spike-stage — read before
+assuming a shape.
 
 ### `src/common/{python,r}/` and `src/common/schema/`
 Shared, language-split utilities copied into a module — a **reserved,
@@ -101,9 +102,9 @@ implementations feel like one contract; keep dependencies light.
 
 The first utility is **shared CLI helpers**. An *interface* — a named CLI contract
 owned by a benchmark — is defined as data in the benchmark's own
-`schema/<interface>.json` and vendored into a module's `src/common/schema/`. The
-boilerplate carries none itself (example copies live in the example module
-fixture `tests/fixtures/module/` for the tests and docs). The module author writes their **own**
+`schema/<interface>.json` and copied into a module's `src/common/schema/`. The
+boilerplate carries none itself (its tests fetch the plan's real `schema/` at run
+time — see *Tests* / `pixi run fetch-schema`). The module author writes their **own**
 `argparse` (Python) / `argparser` (R) CLI and owns the parser; `cli.py` (stdlib
 `argparse`) and `cli.R` (the `argparser` CRAN package + `jsonlite` — `argparser`
 is pure R, *not* the `argparse` package, which pulls Python) just *inject* the
@@ -248,8 +249,8 @@ plan:                    # the plan this boilerplate is the template for
   a working entrypoint yet — hence the `run.sh` placeholder.
 - **`plan`** is the single template→plan pointer: the boilerplate is a template
   for *one* plan, so it records that plan's `repo`/`file`/`ref`. Only dev tooling
-  reads it — `refresh-fixtures` vendors the example schemas from this plan's
-  `schema/` — and `ob` ignores it. Note this is **not** a module's `benchmarks:`:
+  reads it — `fetch-schema` pulls this plan's real `schema/` into a gitignored dir
+  for the tests — and `ob` ignores it. Note this is **not** a module's `benchmarks:`:
   the boilerplate consumes no benchmark.
 
 A **module's** manifest is the consumer shape, declared with `benchmarks:` — a list
@@ -257,9 +258,7 @@ of the benchmark(s) it plugs into, each `{name, repo, plan, ref}`. `pull` vendor
 each one's whole `schema/` dir into `src/common/schema/`; the entrypoint loads the
 stage it needs by name and the engine errors if that schema isn't vendored. There
 is no `implements:` ledger and no per-interface version handshake — a module simply
-carries the schemas its benchmark publishes at the pinned `ref`. See
-`tests/fixtures/module/omnibenchmark.yaml` for a worked example — a realistic module
-with vendored `src/common/schema/`.
+carries the schemas its benchmark publishes at the pinned `ref`.
 
 ### Vendoring shared code + interfaces (`scripts/pull.py`, interim)
 How the shared code and interface schemas get *into* a module — until `ob` owns
@@ -320,24 +319,31 @@ dev-task manifest, deliberately separate from `actions/*/pixi.toml` (which are
 private action toolchains). Its tasks:
 
 - `pixi run docs` / `docs-check` — re-embed doc snippets / fail on drift.
+- `pixi run fetch-schema` — fetch the plan's real `schema/` into the gitignored
+  `tests/fixtures/schema/` that the tests read (needs network).
 - `pixi run test` — Python + R tests for `src/common` (under `tests/`).
 - `pixi run lint` / `typecheck` — `ruff` and `mypy` over the Python side.
-- `pixi run check` — all of the above; this is what CI runs and gates on.
+- `pixi run check` — all of the above except `fetch-schema`; this is what CI runs
+  and gates on (after fetching the schema).
 
 `scripts/embed_snippets.py` (stdlib only) injects a referenced file verbatim
 into the `<!-- embed:PATH -->` / `<!-- /embed -->` block of each Markdown file
 listed in its `TARGETS`, keeping a doc's copy from drifting from the **real
 file**. Run `docs` locally to fix a stale embed.
 
-Tests live in `tests/` (template-only, not copied into modules). Keep them
-green — they gate merges. R linting/typechecking are intentionally omitted to
-stay minimal (R has no standard type checker; `lintr` is heavy).
+Tests live in `tests/` (template-only, not copied into modules). They exercise the
+cli helpers against the plan's **real** `schema/`, fetched into the gitignored
+`tests/fixtures/schema/` by `pixi run fetch-schema` — there are no checked-in
+example schemas to drift or confuse. Run `fetch-schema` once, then `test` is
+offline. Keep them green — they gate merges. R linting/typechecking are
+intentionally omitted to stay minimal (R has no standard type checker; `lintr` is
+heavy).
 
 ### Continuous integration
 `.github/workflows/ci.yml` tests **this repo's own deliverables** and **gates
-merges** (set branch protection to require both jobs). The `checks` job runs
-`pixi run check` (docs-sync, interface consistency, `ruff`,
-`mypy`, Python/R tests). The
+merges** (set branch protection to require both jobs). The `checks` job fetches
+the plan's `schema/` (`pixi run fetch-schema`) then runs `pixi run check`
+(docs-sync, `ruff`, `mypy`, Python/R tests). The
 `validate-module` job dogfoods the catalog action against this repo
 (`uses: ./actions/validate-module`) — which works because the repo doubles as a
 module (`omnibenchmark.yaml`), and is also the **only place the action runs live
