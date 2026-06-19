@@ -56,11 +56,6 @@ class TestCli(unittest.TestCase):
         with self.assertRaises(SystemExit):
             cli.add_base_args(argparse.ArgumentParser(), schema_dir=Path("no/such/dir"))
 
-    def test_common_version(self):
-        v = cli.common_version()
-        self.assertEqual(v, (ROOT / "src" / "common" / "VERSION").read_text().strip())
-        self.assertRegex(v, r"^\d+\.\d+\.\d+")
-
     # ── helpers add args to the author's own parser ───────────────────────────
     def test_add_base_args_adds_universal(self):
         p = argparse.ArgumentParser()

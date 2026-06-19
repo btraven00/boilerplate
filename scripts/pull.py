@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Vendor the shared engine + stage schemas into a module (interim, pre-`ob`).
+"""Copy over the shared templates + stage schemas into a module (temporary solution until we have a proper distribution mechanism
+incorporated in omnibenchmark).
 
 Reads ./omnibenchmark.yaml and pulls, at pinned refs, via shallow+sparse git:
 
@@ -10,15 +11,14 @@ Reads ./omnibenchmark.yaml and pulls, at pinned refs, via shallow+sparse git:
     (`_base.json` + every stage `<iface>.json`) of each benchmark in `benchmarks:`.
 
 It also records the *resolved* sources in ./src/common/.provenance.json — the
-engine commit and each benchmark the schemas came from (repo/ref/commit) — an
-exact sync witness, independent of `src/common/VERSION` (which only moves on a
-bump). Commit it: it's the record of what this module carries, especially when a
-`ref` is a moving branch.
+common code commit and each benchmark the schemas came from (repo/ref/commit).
+With no version literal in the shared code, the template commit *is* the version
+handle. Module author should commit it: it's the record of what this module
+carries, especially when a `ref` is a moving branch.
 
-This is the interim distribution mechanism; `ob` will subsume it. It takes the
-module root as an optional argument (default: the current directory) and reads
-`<root>/omnibenchmark.yaml` / writes `<root>/src/common`, so its own location
-doesn't matter. Point it at a module, or run it from inside one:
+This is a temporary distribution mechanism. `ob` will eventually automate much of this step.
+
+This script takes the module root as an optional argument.
 
     python boilerplate/scripts/pull.py path/to/module   # or, from the module root:
     cd my-module && python ../boilerplate/scripts/pull.py
@@ -66,9 +66,10 @@ def _git_head(repo_dir: Path) -> str:
 
 
 def _write_provenance(common: Path, engine: dict | None, schemas: list[dict]) -> None:
-    """Witness exactly what was vendored and from where: the engine source and each
-    benchmark the schemas came from (repo / ref / resolved commit). Independent of
-    the engine VERSION (which only moves on a bump). Commit it."""
+    """Witness exactly what was copied over and from where: the engine source and
+    each benchmark the schemas came from (repo / ref / resolved commit). The engine
+    `commit` is the version handle — diff it against the template's latest main to
+    check for updates (there is no version literal). Commit it."""
     common.mkdir(parents=True, exist_ok=True)
     prov = {
         "engine": engine,
@@ -79,7 +80,7 @@ def _write_provenance(common: Path, engine: dict | None, schemas: list[dict]) ->
 
 
 def _vendor_common(bp: dict, common: Path) -> dict:
-    """Copy the engine (cli.* + VERSION) from the boilerplate. Returns the engine
+    """Copy the engine (cli.*) from the boilerplate. Returns the engine
     source record for provenance."""
     lang = bp.get("lang", "python")
     ref = bp.get("ref", "main")
@@ -88,15 +89,10 @@ def _vendor_common(bp: dict, common: Path) -> dict:
         # Only the engine comes from the boilerplate now; schemas (incl. _base)
         # come from the benchmark — see _vendor_schemas.
         _copy_glob(src / "src" / "common" / lang, common)
-        version_file = src / "src" / "common" / "VERSION"
-        version = version_file.read_text().strip() if version_file.exists() else None
-        if version is not None:
-            shutil.copy2(version_file, common / "VERSION")
         commit = _git_head(src)
     finally:
         shutil.rmtree(src, ignore_errors=True)
-    return {"repo": bp["repo"], "ref": ref, "commit": commit,
-            "version": version, "lang": lang}
+    return {"repo": bp["repo"], "ref": ref, "commit": commit, "lang": lang}
 
 
 def _fetch_schemas_from(bench: dict, schema_dir: Path) -> tuple[list[str], str | None]:
@@ -158,7 +154,7 @@ def main() -> int:
 
     if engine:
         msg = (f"OK: synced src/common/ <- {engine['repo']}@{engine['ref']} "
-               f"{engine['commit'][:12]} (v{engine['version']})")
+               f"{engine['commit'][:12]}")
     else:
         msg = "OK: nothing to sync (no `templates:` in omnibenchmark.yaml)"
     if vendored:
