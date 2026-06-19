@@ -50,15 +50,16 @@ def _sparse_fetch(repo: str, ref: str, paths: list[str]) -> Path:
     return tmp
 
 
-def _copy_glob(src_dir: Path, dest_dir: Path) -> list[str]:
-    """Copy every file in src_dir into dest_dir. Returns the names copied."""
+def _copy_glob(src_dir: Path, dest_dir: Path) -> list[Path]:
+    """Copy every file in src_dir into dest_dir. Returns the files written."""
     dest_dir.mkdir(parents=True, exist_ok=True)
-    copied = []
+    written = []
     for f in src_dir.glob("*"):
         if f.is_file():
-            shutil.copy2(f, dest_dir / f.name)
-            copied.append(f.name)
-    return copied
+            dest = dest_dir / f.name
+            shutil.copy2(f, dest)
+            written.append(dest)
+    return written
 
 
 def _git_head(repo_dir: Path) -> str:
@@ -83,21 +84,20 @@ def _write_provenance(common: Path, engine: dict | None, schemas: list[dict]) ->
     (common / ".origin.json").write_text(json.dumps(prov, indent=2) + "\n")
 
 
-def _vendor_common(bp: dict, common: Path) -> dict:
-    """Copy the engine (cli.*) from the boilerplate. Returns the engine
-    source record for provenance."""
+def _vendor_common(bp: dict, common: Path) -> tuple[dict, list[Path]]:
+    """Copy the engine (cli.*) from the boilerplate. Returns the engine source
+    record (for provenance) and the files written."""
     lang = bp.get("lang", "python")
     ref = bp.get("ref", "main")
     src = _sparse_fetch(bp["repo"], ref, ["src/common"])
     try:
         # Only the engine comes from the boilerplate now; schemas (incl. _base)
         # come from the benchmark — see _vendor_schemas.
-        for name in _copy_glob(src / "src" / "common" / lang, common):
-            print(f"copied src/common/{name} from {bp['repo']}@{ref}")
+        written = _copy_glob(src / "src" / "common" / lang, common)
         commit = _git_head(src)
     finally:
         shutil.rmtree(src, ignore_errors=True)
-    return {"repo": bp["repo"], "ref": ref, "commit": commit, "lang": lang}
+    return {"repo": bp["repo"], "ref": ref, "commit": commit, "lang": lang}, written
 
 
 def _fetch_schemas_from(bench: dict, schema_dir: Path) -> tuple[list[str], str | None]:
@@ -118,34 +118,78 @@ def _fetch_schemas_from(bench: dict, schema_dir: Path) -> tuple[list[str], str |
         got = []
         for f in files:
             shutil.copy2(f, schema_dir / f.name)
-            print(f"copied src/common/schema/{f.name} from {bench['repo']}@{ref}")
             got.append(f.stem)
         return got, _git_head(src)
     finally:
         shutil.rmtree(src, ignore_errors=True)
 
 
-def _vendor_schemas(cfg: dict, common: Path) -> tuple[int, list[dict]]:
+def _vendor_schemas(cfg: dict, common: Path) -> tuple[list[Path], list[dict]]:
     """Vendor each benchmark's whole schema/ dir into src/common/schema/. A module
     carries every schema its benchmark(s) publish; the engine loads one by name at
     runtime and errors if it's absent (no separate `implements` ledger).
-    Returns (vendored count, per-benchmark provenance records)."""
+    Returns (files written, per-benchmark provenance records)."""
     benches = [
         e for e in (cfg.get("benchmarks") or [])
         if isinstance(e, dict) and "repo" in e
     ]
     schema_dir = common / "schema"
 
-    vendored = 0
+    written: list[Path] = []
     records: list[dict] = []
     for bench in benches:
         got, commit = _fetch_schemas_from(bench, schema_dir)
-        vendored += len(got)
+        written += [schema_dir / f"{stem}.json" for stem in got]
         if got:
             records.append({"benchmark": bench.get("name", bench["repo"]),
                             "repo": bench["repo"], "ref": bench.get("ref", "main"),
                             "commit": commit, "files": got})
-    return vendored, records
+    return written, records
+
+
+def _sync_summary(root: Path, written: list[Path]) -> None:
+    """Git-style summary of what this sync did to the module's tree: which copied
+    files are new, which were already up to date (unchanged), and which had local
+    edits the copy overwrote (changed — shouldn't happen; the upstream copy is the
+    source of truth). Classifies each written file against the module's git index.
+    Falls back to a plain list when the module isn't a git repo."""
+    if not written:
+        return
+    try:
+        top = Path(subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--show-toplevel"],
+            check=True, capture_output=True, text=True).stdout.strip())
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        rels = sorted(str(p.relative_to(root)) for p in written)
+        print(f"\nsynced {len(rels)} files (not a git repo — no status breakdown):")
+        for rel in rels:
+            print(f"    {rel}")
+        return
+
+    rels = sorted(str(p.relative_to(top)) for p in written)
+    out = subprocess.run(
+        ["git", "-C", str(top), "status", "--porcelain", "--untracked-files=all",
+         "--", *rels], check=True, capture_output=True, text=True)
+    codes = {line[3:]: line[:2] for line in out.stdout.splitlines()}
+
+    new, changed, unchanged = [], [], []
+    for rel in rels:
+        code = codes.get(rel, "")
+        if code in ("??", "A ", "AM"):
+            new.append(rel)
+        elif code:                  # tracked but differs from index/HEAD
+            changed.append(rel)
+        else:                       # not reported by git -> matches what's committed
+            unchanged.append(rel)
+
+    print("\nsync summary:")
+    for rel in new:
+        print(f"    new        {rel}")
+    for rel in changed:
+        print(f"    changed!   {rel}  (local edits overwritten)")
+    for rel in unchanged:
+        print(f"    unchanged  {rel}")
+    print(f"  {len(new)} new, {len(changed)} changed, {len(unchanged)} unchanged")
 
 
 def main() -> int:
@@ -153,17 +197,26 @@ def main() -> int:
     cfg = yaml.safe_load((root / "omnibenchmark.yaml").read_text()) or {}
     common = root / "src" / "common"
     bp = cfg.get("templates")
-    engine = _vendor_common(bp, common) if bp else None
-    vendored, schemas = _vendor_schemas(cfg, common)
+
+    written: list[Path] = []
+    if bp:
+        engine, engine_files = _vendor_common(bp, common)
+        written += engine_files
+    else:
+        engine = None
+    schema_files, schemas = _vendor_schemas(cfg, common)
+    written += schema_files
     _write_provenance(common, engine, schemas)
+
+    _sync_summary(root, written)
 
     if engine:
         msg = (f"OK: synced src/common/ <- {engine['repo']}@{engine['ref']} "
                f"{engine['commit'][:12]}")
     else:
         msg = "OK: nothing to sync (no `templates:` in omnibenchmark.yaml)"
-    if vendored:
-        msg += f"; schemas: {vendored} copied"
+    if schema_files:
+        msg += f"; schemas: {len(schema_files)} copied"
     print(msg)
     print("note: commit the schemas you use (src/common/schema/) along with "
           "src/common/.origin.json — they record what this module uses.")
